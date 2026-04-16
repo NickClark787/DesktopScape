@@ -1,0 +1,27 @@
+appId: org.gearscape.desktop
+productName: GearScape Desktop
+directories:
+  output: release
+  buildResources: resources
+files:
+  - out/**/*
+  - resources/**/*
+  - package.json
+extraResources:
+  - from: resources/data
+    to: data
+    filter:
+      - '**/*.json'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: '${productName}-${version}-${arch}.${ext}'
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: GearScape Desktop

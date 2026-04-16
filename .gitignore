@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+build/
+release/
+.DS_Store
+*.log
+.env
+.env.local
+.vite/
+.vscode/
+.idea/
+
+.reference/

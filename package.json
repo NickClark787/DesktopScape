@@ -1,0 +1,40 @@
+{
+  "name": "gearscape-desktop",
+  "productName": "GearScape Desktop",
+  "version": "0.1.0",
+  "description": "Desktop best-in-slot / DPS calculator for Old School RuneScape",
+  "main": "out/main/index.js",
+  "author": "GearScape Desktop Contributors",
+  "license": "GPL-3.0-or-later",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist:win": "electron-vite build && electron-builder --win --config electron-builder.yml"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "fuzzysort": "^3.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^4.5.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "autoprefixer": "^10.4.20",
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "tsx": "^4.21.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8"
+  }
+}
