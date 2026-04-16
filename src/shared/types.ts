@@ -161,6 +161,8 @@ export interface PlayerLoadout {
   onSlayerTask: boolean;
   inWilderness: boolean;
   equipment: Partial<Record<Exclude<EquipmentSlot, '2h'>, EquipmentPiece | null>>;
+  /** Selected combat spell name (magic only). Ignored when a powered staff is equipped. */
+  spell: string | null;
 }
 
 export interface CalcResult {
@@ -183,4 +185,6 @@ export interface BestSetupCandidate {
   result: CalcResult;
   style: CombatStyle;
   attackStyle: AttackType;
+  /** Spell used by the candidate (magic only). Null means a powered staff drove the max hit. */
+  spell?: string | null;
 }

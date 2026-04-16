@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { findBestSetup, findBestMeleeSetup } from '../src/engine/bestSetup.ts';
+import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../src/engine/bestSetup.ts';
 import type { Monster, EquipmentPiece, PlayerLoadout, CombatStyle } from '../src/shared/types.ts';
 
 const equipment: EquipmentPiece[] = JSON.parse(await readFile('resources/data/equipment.json', 'utf8'));
@@ -22,6 +22,7 @@ const basePlayer: PlayerLoadout = {
   onSlayerTask: false,
   inWilderness: false,
   equipment: {},
+  spell: null,
 };
 
 const styles: CombatStyle[] = ['melee', 'ranged', 'magic'];
@@ -29,6 +30,8 @@ for (const style of styles) {
   const t = Date.now();
   const out = style === 'melee'
     ? findBestMeleeSetup({ ...basePlayer, style }, target, equipment, { shortlistPerSlot: 6 })
+    : style === 'magic'
+    ? findBestMagicSetup({ ...basePlayer, style }, target, equipment, { shortlistPerSlot: 6 })
     : findBestSetup({ ...basePlayer, style, attackStyle: style }, target, equipment, {
         style, attackStyle: style, shortlistPerSlot: 6,
       });
@@ -39,6 +42,7 @@ for (const style of styles) {
   console.log(`  Max hit:  ${out.result.maxHit}`);
   console.log(`  Accuracy: ${(out.result.accuracy * 100).toFixed(1)}%`);
   console.log(`  TTK:      ${out.result.ttkSeconds.toFixed(1)}s`);
+  if (style === 'magic') console.log(`  Spell:    ${out.spell ?? '(powered staff)'}`);
   for (const [slot, piece] of Object.entries(out.equipment)) {
     if (!piece) continue;
     console.log(`    ${slot.padEnd(8)} ${piece.name}${piece.version ? ` (${piece.version})` : ''}`);

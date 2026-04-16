@@ -15,6 +15,7 @@ import type {
 } from '@shared/types';
 import { EQUIPMENT_SLOTS } from '@shared/types';
 import { calcDps, pieceScore } from './formulas';
+import { CANDIDATE_SPELL_NAMES } from './spells';
 
 export interface OptimizerOptions {
   style: CombatStyle;
@@ -147,7 +148,7 @@ export function findBestSetup(
   }
 
   const result = calcDps(current, monster);
-  return { equipment: current.equipment, result, style, attackStyle };
+  return { equipment: current.equipment, result, style, attackStyle, spell: current.spell ?? null };
 }
 
 export function bestMeleeAttackStyle(
@@ -180,6 +181,33 @@ export function findBestMeleeSetup(
   for (const atk of ['stab', 'slash', 'crush'] as const) {
     const c = findBestSetup(base, monster, equipment, { ...opts, style: 'melee', attackStyle: atk });
     if (c) candidates.push(c);
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.result.dps - a.result.dps);
+  return candidates[0];
+}
+
+/**
+ * For magic, run the optimizer once per candidate spell. Powered staves ignore
+ * the spell field internally, so the "best powered staff" case is covered by
+ * any run. Returns the overall highest-DPS candidate, with the winning spell
+ * name attached so the UI can display it.
+ */
+export function findBestMagicSetup(
+  base: PlayerLoadout,
+  monster: Monster,
+  equipment: EquipmentPiece[],
+  opts: Omit<OptimizerOptions, 'style' | 'attackStyle'>,
+): BestSetupCandidate | null {
+  const candidates: BestSetupCandidate[] = [];
+  for (const spellName of CANDIDATE_SPELL_NAMES) {
+    const seeded: PlayerLoadout = { ...base, spell: spellName };
+    const c = findBestSetup(seeded, monster, equipment, {
+      ...opts,
+      style: 'magic',
+      attackStyle: 'magic',
+    });
+    if (c) candidates.push({ ...c, spell: spellName });
   }
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.result.dps - a.result.dps);

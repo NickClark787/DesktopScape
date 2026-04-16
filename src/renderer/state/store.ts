@@ -25,6 +25,7 @@ export interface AppState {
   setOnSlayerTask: (v: boolean) => void;
   setInWilderness: (v: boolean) => void;
   setAttackStyle: (v: PlayerLoadout['attackStyle']) => void;
+  setSpell: (v: string | null) => void;
   hydrate: (data: { equipment: EquipmentPiece[]; monsters: Monster[] }) => void;
   setEquipment: (eq: PlayerLoadout['equipment']) => void;
 }
@@ -44,6 +45,7 @@ export const useApp = create<AppState>((set) => ({
     onSlayerTask: false,
     inWilderness: false,
     equipment: {},
+    spell: null,
   },
   setStyle: (s) => set((st) => ({
     style: s,
@@ -60,6 +62,7 @@ export const useApp = create<AppState>((set) => ({
   setOnSlayerTask: (v) => set((st) => ({ loadout: { ...st.loadout, onSlayerTask: v } })),
   setInWilderness: (v) => set((st) => ({ loadout: { ...st.loadout, inWilderness: v } })),
   setAttackStyle: (v) => set((st) => ({ loadout: { ...st.loadout, attackStyle: v } })),
+  setSpell: (v) => set((st) => ({ loadout: { ...st.loadout, spell: v } })),
   hydrate: ({ equipment, monsters }) => set({ equipment, monsters, loading: false }),
   setEquipment: (eq) => set((st) => ({ loadout: { ...st.loadout, equipment: eq } })),
 }));

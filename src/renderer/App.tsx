@@ -6,7 +6,8 @@ import { StatsPanel } from './components/StatsPanel';
 import { PrayerPanel } from './components/PrayerPanel';
 import { PotionPanel } from './components/PotionPanel';
 import { ResultsPanel } from './components/ResultsPanel';
-import { findBestSetup, findBestMeleeSetup } from '../engine/bestSetup';
+import { SpellPicker } from './components/SpellPicker';
+import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import type { BestSetupCandidate } from '@shared/types';
 
 export default function App() {
@@ -38,13 +39,18 @@ export default function App() {
     await new Promise((r) => requestAnimationFrame(() => r(null)));
     const result = state.style === 'melee'
       ? findBestMeleeSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5 })
+      : state.style === 'magic'
+      ? findBestMagicSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5 })
       : findBestSetup(
           { ...state.loadout, style: state.style, attackStyle: state.style },
           selectedMonster,
           state.equipment,
           { style: state.style, attackStyle: state.style, shortlistPerSlot: 5 },
         );
-    if (result) state.setEquipment(result.equipment);
+    if (result) {
+      state.setEquipment(result.equipment);
+      if (result.style === 'magic' && result.spell !== undefined) state.setSpell(result.spell);
+    }
     setCandidate(result);
     setComputing(false);
   }
@@ -115,6 +121,9 @@ export default function App() {
               <PrayerPanel style={state.style} prayers={state.loadout.prayers} onToggle={state.togglePrayer} />
               <PotionPanel style={state.style} potions={state.loadout.potions} onChange={state.setPotion} />
             </div>
+            {state.style === 'magic' && (
+              <SpellPicker value={state.loadout.spell} onChange={state.setSpell} />
+            )}
             <ResultsPanel candidate={candidate} computing={computing} />
           </main>
         </div>

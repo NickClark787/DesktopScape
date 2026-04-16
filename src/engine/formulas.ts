@@ -16,6 +16,15 @@ import type {
   Prayers,
   StyleStats,
 } from '@shared/types';
+import {
+  allowsSpellCasting,
+  getSpellMaxHit,
+  isPoweredStaff,
+  isSalamander,
+  poweredStaffMaxHit,
+  shadowDamageMultiplier,
+  spellByName,
+} from './spells';
 
 const SECONDS_PER_TICK = 0.6;
 
@@ -70,12 +79,13 @@ interface PrayerMults {
   ranged: number;
   rangedStr: number;
   magic: number;
-  magicStr: number;
+  /** Additive magic damage bonus in tenths-of-a-percent (Augury = 40 → +4%). */
+  magicDmgAdd: number;
   def: number;
 }
 
 function prayerMultipliers(pr: Prayers): PrayerMults {
-  const m: PrayerMults = { atk: 1, str: 1, ranged: 1, rangedStr: 1, magic: 1, magicStr: 1, def: 1 };
+  const m: PrayerMults = { atk: 1, str: 1, ranged: 1, rangedStr: 1, magic: 1, magicDmgAdd: 0, def: 1 };
 
   // Melee attack
   if (pr.clarityOfThought) m.atk = Math.max(m.atk, 1.05);
@@ -96,11 +106,11 @@ function prayerMultipliers(pr: Prayers): PrayerMults {
   if (pr.eagleEye) { m.ranged = Math.max(m.ranged, 1.15); m.rangedStr = Math.max(m.rangedStr, 1.15); }
   if (pr.rigour) { m.ranged = Math.max(m.ranged, 1.20); m.rangedStr = Math.max(m.rangedStr, 1.23); m.def = Math.max(m.def, 1.25); }
 
-  // Magic
+  // Magic — accuracy multiplicative, damage additive in /1000.
   if (pr.mysticWill) { m.magic = Math.max(m.magic, 1.05); }
-  if (pr.mysticLore) { m.magic = Math.max(m.magic, 1.10); m.magicStr = Math.max(m.magicStr, 1.025); }
-  if (pr.mysticMight) { m.magic = Math.max(m.magic, 1.15); m.magicStr = Math.max(m.magicStr, 1.05); }
-  if (pr.augury) { m.magic = Math.max(m.magic, 1.25); m.magicStr = Math.max(m.magicStr, 1.04); m.def = Math.max(m.def, 1.25); }
+  if (pr.mysticLore) { m.magic = Math.max(m.magic, 1.10); m.magicDmgAdd = Math.max(m.magicDmgAdd, 10); }
+  if (pr.mysticMight) { m.magic = Math.max(m.magic, 1.15); m.magicDmgAdd = Math.max(m.magicDmgAdd, 20); }
+  if (pr.augury) { m.magic = Math.max(m.magic, 1.25); m.magicDmgAdd = Math.max(m.magicDmgAdd, 40); m.def = Math.max(m.def, 1.25); }
 
   return m;
 }
@@ -217,15 +227,37 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     maxHit = Math.floor(0.5 + (effectiveStrength * (eq.bonuses.ranged_str + 64)) / 640);
     defenceRoll = (monster.skills.def + 9) * (monster.defensive.standard + 64);
   } else {
-    // Magic — simplified: uses magic level as effective for both roll and damage.
-    effectiveAttack = Math.floor(sk.magic * pr.magic) + stance.magic + 8;
-    effectiveStrength = Math.floor(sk.magic * pr.magicStr);
-    attackRoll = effectiveAttack * (eq.offensive.magic + 64);
-    // Base max hit without a spell set: approximate using magic strength bonus alone.
-    const baseSpellMax = 30; // placeholder — real calc needs spell selection (TODO: wire Spell data)
-    const magicDmgMult = 1 + (eq.bonuses.magic_str / 100) * pr.magicStr;
-    maxHit = Math.floor(baseSpellMax * magicDmgMult);
+    // Magic.
+    const weapon = loadout.equipment.weapon ?? null;
+    const magicLevel = sk.magic;
+
+    // Apply Tumeken's-shadow multiplier to gear contributions (×3, capped at +100%).
+    let geartMagicStr = eq.bonuses.magic_str;
+    let offensiveMagic = eq.offensive.magic;
+    if (weapon?.name === "Tumeken's shadow") {
+      const f = shadowDamageMultiplier(weapon.name); // 3
+      geartMagicStr = Math.min(1000, geartMagicStr * f);
+      offensiveMagic = offensiveMagic * f;
+    }
+
+    effectiveAttack = Math.floor(magicLevel * pr.magic) + stance.magic + 9;
+    attackRoll = effectiveAttack * (offensiveMagic + 64);
     defenceRoll = (monster.skills.magic + 9) * (monster.defensive.magic + 64);
+    effectiveStrength = magicLevel; // magic has no "effective strength" stat
+
+    // 1) Resolve base max hit
+    let baseMax = 0;
+    if (weapon && (isPoweredStaff(weapon) || isSalamander(weapon))) {
+      baseMax = poweredStaffMaxHit(weapon.name, magicLevel) ?? 0;
+    } else if (allowsSpellCasting(weapon) || weapon === null) {
+      const spell = spellByName(loadout.spell);
+      if (spell) baseMax = getSpellMaxHit(spell, magicLevel);
+    }
+
+    // 2) Apply magic damage bonus — additive in tenths-of-a-percent.
+    //    maxHit = baseMax + trunc(baseMax * magicDmgBonus / 1000)
+    const magicDmgBonus = geartMagicStr + pr.magicDmgAdd;
+    maxHit = baseMax + Math.trunc((baseMax * magicDmgBonus) / 1000);
   }
 
   // Attack vs defence accuracy
