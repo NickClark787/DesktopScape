@@ -51,6 +51,31 @@ interface Case {
   monster: Monster;
 }
 
+function maxedRangedLoadout(weapon: string, ammo: string): PlayerLoadout {
+  return {
+    style: 'ranged',
+    attackStyle: 'ranged',
+    skills: { ...maxedSkills },
+    prayers: { ...noPrayers, rigour: true },
+    potions: { ...noPotions, ranged: 'divine_ranging' },
+    onSlayerTask: false,
+    inWilderness: false,
+    spell: null,
+    equipment: {
+      head: findPiece('Masori mask (f)'),
+      cape: findPiece("Dizana's quiver", 'Charged'),
+      neck: findPiece('Necklace of anguish'),
+      ammo: findPiece(ammo),
+      weapon: findPiece(weapon),
+      body: findPiece('Masori body (f)'),
+      legs: findPiece('Masori chaps (f)'),
+      hands: findPiece('Zaryte vambraces'),
+      feet: findPiece('Pegasian boots'),
+      ring: findPiece('Venator ring'),
+    },
+  };
+}
+
 const cases: Case[] = [
   {
     label: 'Max melee (Torva + Scythe, Piety + Super combat) vs Vorkath (Post-quest)',
@@ -209,6 +234,56 @@ const cases: Case[] = [
         ring: findPiece('Magus ring'),
       },
     },
+  },
+  {
+    label: 'Twisted bow vs Zulrah (Serpentine, magic 300)',
+    expect: 'Zulrah mag 300 caps TBow mods near max. dmgMult ~2.05x, accMult ~1.18x. Big DPS boost vs BoF',
+    monster: findMonster('Zulrah', 'Serpentine'),
+    loadout: maxedRangedLoadout('Twisted bow', 'Dragon arrow'),
+  },
+  {
+    label: 'Twisted bow vs low-magic target (Great Olm right claw, mag 87)',
+    expect: 'Low magic = TBow penalised. Mods drop well below 100% — BoF should beat TBow here',
+    monster: findMonster('Great Olm', 'Right claw'),
+    loadout: maxedRangedLoadout('Twisted bow', 'Dragon arrow'),
+  },
+  {
+    label: 'BoF vs Great Olm right claw (comparison to TBow above)',
+    expect: 'Reference: BoF should out-DPS TBow on this low-magic target',
+    monster: findMonster('Great Olm', 'Right claw'),
+    loadout: maxedRangedLoadout('Bow of faerdhinen', 'Dragon arrow'),
+  },
+  {
+    label: 'Emberlight vs K\'ril Tsutsaroth (demon)',
+    expect: 'Emberlight +70% dmg & acc vs demon. Expect substantial boost vs non-demonbane sword',
+    monster: findMonster("K'ril Tsutsaroth"),
+    loadout: {
+      style: 'melee',
+      attackStyle: 'slash',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, piety: true },
+      potions: { ...noPotions, melee: 'super_combat' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Torva full helm'),
+        cape: findPiece('Infernal cape', 'Normal'),
+        neck: findPiece('Amulet of torture'),
+        weapon: findPiece('Emberlight'),
+        body: findPiece('Torva platebody'),
+        legs: findPiece('Torva platelegs'),
+        hands: findPiece('Ferocious gloves'),
+        feet: findPiece('Primordial boots'),
+        ring: findPiece('Ultor ring'),
+      },
+    },
+  },
+  {
+    label: 'ZCB + Ruby dragon bolts (e) vs Nex (HP 3400)',
+    expect: 'Ruby procs 6% for 20% HP (cap 100). Big avg DPS boost over non-proc bolts',
+    monster: findMonster('Nex'),
+    loadout: maxedRangedLoadout('Zaryte crossbow', 'Ruby dragon bolts (e)'),
   },
 ];
 

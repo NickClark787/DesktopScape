@@ -35,12 +35,77 @@ export function scytheAvgPerSwing(maxHit: number, accuracy: number, monsterSize:
   return hits.reduce((sum, h) => sum + accuracy * (h / 2), 0);
 }
 
+// -------------------------------------------------------------------------
+// Crossbow bolt procs (ruby/diamond/onyx/dragonstone, dragon variants)
+// -------------------------------------------------------------------------
+
+function isCrossbow(weapon: EquipmentPiece | null): boolean {
+  return !!weapon && /crossbow/i.test(weapon.category);
+}
+
+const RUBY_BOLTS_RE = /^Ruby (dragon )?bolts(?: \(e\))?$/i;
+const DIAMOND_BOLTS_RE = /^Diamond (dragon )?bolts(?: \(e\))?$/i;
+const ONYX_BOLTS_RE = /^Onyx (dragon )?bolts(?: \(e\))?$/i;
+const DRAGONSTONE_BOLTS_RE = /^Dragonstone (dragon )?bolts(?: \(e\))?$/i;
+
+const ENCHANTED_RE = /\(e\)$/i;
+
+/**
+ * Expected per-swing damage accounting for enchanted-bolt procs. Returns
+ * null if the ammo isn't an enchanted crossbow bolt or the weapon isn't
+ * a crossbow. Proc rates/effects from OSRS wiki.
+ */
+export function boltProcAvgPerSwing(
+  weapon: EquipmentPiece | null,
+  ammo: EquipmentPiece | null,
+  maxHit: number,
+  accuracy: number,
+  monster: Monster,
+): number | null {
+  if (!isCrossbow(weapon) || !ammo || !ENCHANTED_RE.test(ammo.name)) return null;
+
+  const normalAvg = accuracy * (maxHit / 2);
+  const targetHp = monster.skills.hp || 1;
+
+  // Ruby (e) — Blood Forfeit: 6% proc, deals 20% of target current HP, cap 100.
+  if (RUBY_BOLTS_RE.test(ammo.name)) {
+    const procDmg = Math.min(100, Math.floor(targetHp * 0.20));
+    return 0.94 * normalAvg + 0.06 * procDmg;
+  }
+
+  // Diamond (e) — Armour Piercing: 10% proc, bypasses defense (100% acc) and +15% max hit.
+  if (DIAMOND_BOLTS_RE.test(ammo.name)) {
+    const procMax = Math.trunc(maxHit * 1.15);
+    const procAvg = procMax / 2; // guaranteed to land
+    return 0.90 * normalAvg + 0.10 * procAvg;
+  }
+
+  // Onyx (e) — Life Leech: 10% proc, +20% max hit; lifesteal doesn't change damage dealt.
+  if (ONYX_BOLTS_RE.test(ammo.name)) {
+    const procMax = Math.trunc(maxHit * 1.20);
+    const procAvg = accuracy * (procMax / 2);
+    return 0.90 * normalAvg + 0.10 * procAvg;
+  }
+
+  // Dragonstone (e) — Dragon's Breath: 6% proc, +20% max hit. Ineffective vs dragons/fire-immune.
+  if (DRAGONSTONE_BOLTS_RE.test(ammo.name)) {
+    const attrs = (monster.attributes || []).map((a) => a.toLowerCase());
+    if (attrs.includes('dragon') || attrs.includes('fiery')) return normalAvg;
+    const procMax = Math.trunc(maxHit * 1.20);
+    const procAvg = accuracy * (procMax / 2);
+    return 0.94 * normalAvg + 0.06 * procAvg;
+  }
+
+  return null;
+}
+
 /**
  * Entry point used by calcDps. Returns the expected damage per swing for any
  * special-behavior weapon, or null if the weapon is a standard single-hit.
  */
 export function specialAvgPerSwing(
   weapon: EquipmentPiece | null,
+  ammo: EquipmentPiece | null,
   maxHit: number,
   accuracy: number,
   monster: Monster,
@@ -48,6 +113,8 @@ export function specialAvgPerSwing(
   if (isScythe(weapon)) {
     return scytheAvgPerSwing(maxHit, accuracy, monster.size);
   }
+  const bolt = boltProcAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
+  if (bolt !== null) return bolt;
   return null;
 }
 
@@ -101,6 +168,64 @@ export function magicWeaponMult(
   }
 
   return MAGIC_MULT_IDENTITY;
+}
+
+// -------------------------------------------------------------------------
+// Twisted bow — scales with target magic level
+// -------------------------------------------------------------------------
+
+export interface RangedWeaponMult {
+  /** Multiplier applied to max hit AFTER the gear ranged_str bonus. */
+  dmgMult: number;
+  /** Multiplier applied to the ranged attack roll. */
+  accMult: number;
+}
+
+const RANGED_IDENTITY: RangedWeaponMult = { dmgMult: 1, accMult: 1 };
+
+/**
+ * Twisted bow scales with the target's magic level. Formula from the OSRS
+ * wiki (https://oldschool.runescape.wiki/w/Twisted_bow):
+ *   M = min(target magic, 250)   (350 inside CoX — out of scope)
+ *   accMod% = 140 + floor((3M - 10)/100) - floor(((3M/10 - 100)^2)/100)
+ *   dmgMod% = 250 + floor((3M - 14)/100) - floor(((3M/10 - 140)^2)/100)
+ *   accMod clamped to [0, 140], dmgMod clamped to [0, 250].
+ *
+ * Against low-magic targets both mods drop below 100% — TBow is a bad pick
+ * there, which the optimizer needs to see.
+ */
+export function twistedBowMult(weapon: EquipmentPiece | null, monster: Monster): RangedWeaponMult {
+  if (!weapon || weapon.name !== 'Twisted bow') return RANGED_IDENTITY;
+  const m = Math.min(monster.skills.magic, 250);
+  const accRaw = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(((3 * m / 10 - 100) ** 2) / 100);
+  const dmgRaw = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc(((3 * m / 10 - 140) ** 2) / 100);
+  const accPct = Math.max(0, Math.min(140, accRaw));
+  const dmgPct = Math.max(0, Math.min(250, dmgRaw));
+  return { dmgMult: dmgPct / 100, accMult: accPct / 100 };
+}
+
+// -------------------------------------------------------------------------
+// Demonbane weapons — Arclight / Emberlight / Darklight
+// -------------------------------------------------------------------------
+
+function isDemon(monster: Monster): boolean {
+  return (monster.attributes || []).some((a) => a.toLowerCase() === 'demon');
+}
+
+/**
+ * Melee demonbane weapons (dmg + acc multiplier against demon-attribute
+ * monsters). Lesser demons actually get 100% of the bonus; K'ril, Nechryael,
+ * Balfrug Kreeyath, Skotizo etc. qualify as demons in the monster data.
+ * Emberlight is the 2024 upgrade that replaces Arclight.
+ */
+export function demonbaneMult(weapon: EquipmentPiece | null, monster: Monster): { dmgMult: number; accMult: number } {
+  if (!weapon || !isDemon(monster)) return { dmgMult: 1, accMult: 1 };
+  if (weapon.name === 'Emberlight') return { dmgMult: 1.7, accMult: 1.7 };
+  if (weapon.name === 'Arclight') return { dmgMult: 1.7, accMult: 1.7 };
+  if (weapon.name === 'Darklight') return { dmgMult: 1.6, accMult: 1.6 };
+  if (weapon.name === 'Silverlight') return { dmgMult: 1.6, accMult: 1.6 };
+  if (weapon.name === 'Silverlight (dyed)') return { dmgMult: 1.6, accMult: 1.6 };
+  return { dmgMult: 1, accMult: 1 };
 }
 
 // -------------------------------------------------------------------------

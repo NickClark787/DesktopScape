@@ -26,7 +26,13 @@ import {
   shadowDamageMultiplier,
   spellByName,
 } from './spells';
-import { magicWeaponMult, specialAvgPerSwing, targetTypeBonus } from './weaponEffects';
+import {
+  demonbaneMult,
+  magicWeaponMult,
+  specialAvgPerSwing,
+  targetTypeBonus,
+  twistedBowMult,
+} from './weaponEffects';
 
 const SECONDS_PER_TICK = 0.6;
 
@@ -248,12 +254,22 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
       : loadout.attackStyle === 'slash' ? monster.defensive.slash
       : monster.defensive.crush;
     defenceRoll = (monster.skills.def + 9) * (defStyle + 64);
+
+    // Demonbane weapons (Arclight / Emberlight / Darklight) vs demons.
+    const dm = demonbaneMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * dm.dmgMult);
+    attackRoll = Math.trunc(attackRoll * dm.accMult);
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
     attackRoll = effectiveAttack * (eq.offensive.ranged + 64);
     maxHit = Math.floor(0.5 + (effectiveStrength * (eq.bonuses.ranged_str + 64)) / 640);
     defenceRoll = (monster.skills.def + 9) * (monster.defensive.standard + 64);
+
+    // Twisted bow: dmg/acc scales with target's magic level.
+    const tb = twistedBowMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * tb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * tb.accMult);
   } else {
     // Magic.
     const magicLevel = sk.magic;
@@ -311,7 +327,8 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
 
   // Most weapons deal accuracy*max/2 damage per swing. Scythe and friends
   // deviate — delegate to weaponEffects for those, fall back to the default.
-  const specialAvg = specialAvgPerSwing(weapon, maxHit, accuracy, monster);
+  const ammo = loadout.equipment.ammo ?? null;
+  const specialAvg = specialAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
   const avgHit = specialAvg ?? accuracy * (maxHit / 2);
   const weaponSpeedTicks = stanceWeaponSpeed(eq.weaponSpeed, style, selectedStance, weapon);
   const weaponSpeedSec = weaponSpeedTicks * SECONDS_PER_TICK;
