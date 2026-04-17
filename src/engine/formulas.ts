@@ -28,6 +28,7 @@ import {
 } from './spells';
 import {
   demonbaneMult,
+  inquisitorBonus,
   magicWeaponMult,
   specialAvgPerSwing,
   targetTypeBonus,
@@ -259,6 +260,11 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const dm = demonbaneMult(weapon, monster);
     maxHit = Math.trunc(maxHit * dm.dmgMult);
     attackRoll = Math.trunc(attackRoll * dm.accMult);
+
+    // Inquisitor's armour — +0.5% per piece, +2.5% full set, crush only.
+    const iq = inquisitorBonus(loadout.equipment, loadout.attackStyle);
+    maxHit = Math.trunc(maxHit * iq.dmgMult);
+    attackRoll = Math.trunc(attackRoll * iq.accMult);
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
@@ -324,6 +330,13 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     accuracy = attackRoll / (2 * (defenceRoll + 1));
   }
   accuracy = Math.max(0, Math.min(1, accuracy));
+
+  // Osmumten's fang: on a missed accuracy roll, reroll once. Net accuracy is
+  // `1 - (1 - p)^2`. (The 15-85% damage range doesn't affect the average, so
+  // only the accuracy boost matters outside ToA.)
+  if (weapon?.name === "Osmumten's fang" && style === 'melee') {
+    accuracy = 1 - (1 - accuracy) ** 2;
+  }
 
   // Most weapons deal accuracy*max/2 damage per swing. Scythe and friends
   // deviate — delegate to weaponEffects for those, fall back to the default.

@@ -103,6 +103,21 @@ export function boltProcAvgPerSwing(
  * Entry point used by calcDps. Returns the expected damage per swing for any
  * special-behavior weapon, or null if the weapon is a standard single-hit.
  */
+export function isDualMacuahuitl(weapon: EquipmentPiece | null | undefined): boolean {
+  return !!weapon && weapon.name === 'Dual macuahuitl';
+}
+
+/**
+ * Dual macuahuitl (Blood Moon weapon) hits twice per swing, sharing a single
+ * accuracy roll. Each hit rolls damage uniformly in [0, max/2], so the
+ * expected damage on a successful swing is `2 * max/4 = max/2` — effectively
+ * the same as a single hit at full max. The blood-moon-set synergy (bonus on
+ * crit, heal) is out of scope; this just models the two-hit mechanic.
+ */
+export function dualMacuahuitlAvgPerSwing(maxHit: number, accuracy: number): number {
+  return accuracy * (maxHit / 2) * 2;
+}
+
 export function specialAvgPerSwing(
   weapon: EquipmentPiece | null,
   ammo: EquipmentPiece | null,
@@ -112,6 +127,9 @@ export function specialAvgPerSwing(
 ): number | null {
   if (isScythe(weapon)) {
     return scytheAvgPerSwing(maxHit, accuracy, monster.size);
+  }
+  if (isDualMacuahuitl(weapon)) {
+    return dualMacuahuitlAvgPerSwing(maxHit, accuracy);
   }
   const bolt = boltProcAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
   if (bolt !== null) return bolt;
@@ -226,6 +244,38 @@ export function demonbaneMult(weapon: EquipmentPiece | null, monster: Monster): 
   if (weapon.name === 'Silverlight') return { dmgMult: 1.6, accMult: 1.6 };
   if (weapon.name === 'Silverlight (dyed)') return { dmgMult: 1.6, accMult: 1.6 };
   return { dmgMult: 1, accMult: 1 };
+}
+
+// -------------------------------------------------------------------------
+// Inquisitor's armour — crush-only set bonus
+// -------------------------------------------------------------------------
+
+const INQUISITOR_PIECES: Record<'head' | 'body' | 'legs', RegExp> = {
+  head: /^Inquisitor's great helm$/i,
+  body: /^Inquisitor's hauberk$/i,
+  legs: /^Inquisitor's plateskirt$/i,
+};
+
+/**
+ * Inquisitor's armour: +0.5% damage & accuracy per piece on crush attacks,
+ * rounded up to +2.5% (2.5× the per-piece amount) when all three are worn
+ * (head + body + legs). Bonus only applies to crush-type melee attacks.
+ */
+export function inquisitorBonus(
+  equipment: PlayerLoadout['equipment'],
+  attackStyle: PlayerLoadout['attackStyle'],
+): { dmgMult: number; accMult: number } {
+  if (attackStyle !== 'crush') return { dmgMult: 1, accMult: 1 };
+  let count = 0;
+  const head = equipment.head ?? null;
+  const body = equipment.body ?? null;
+  const legs = equipment.legs ?? null;
+  if (head && INQUISITOR_PIECES.head.test(head.name)) count++;
+  if (body && INQUISITOR_PIECES.body.test(body.name)) count++;
+  if (legs && INQUISITOR_PIECES.legs.test(legs.name)) count++;
+  if (count === 0) return { dmgMult: 1, accMult: 1 };
+  const pct = count === 3 ? 0.025 : count * 0.005;
+  return { dmgMult: 1 + pct, accMult: 1 + pct };
 }
 
 // -------------------------------------------------------------------------
