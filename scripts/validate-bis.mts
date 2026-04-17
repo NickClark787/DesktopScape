@@ -1,0 +1,231 @@
+/**
+ * Reference-loadout validation harness.
+ *
+ * Pins specific gear + spell + monster + prayers/potions and calls calcDps
+ * directly. The goal is to compare our engine's numbers against known-good
+ * references from gearscape.net and the weirdgloop DPS calc:
+ *   https://dps.osrs.wiki/
+ *   https://gearscape.net/calculators/best
+ *
+ * Expected ranges in the "expect" string are from community calcs; small
+ * deltas (~1 max hit, ~1-2% accuracy, ~0.1-0.3 DPS) are normal for edge-case
+ * formulas. Big drift means a real bug.
+ */
+
+import { readFile } from 'node:fs/promises';
+import { calcDps, stancesForStyle } from '../src/engine/formulas.ts';
+import type { Monster, EquipmentPiece, PlayerLoadout, Prayers, Potions, WeaponStance } from '../src/shared/types.ts';
+
+const equipment: EquipmentPiece[] = JSON.parse(await readFile('resources/data/equipment.json', 'utf8'));
+const monsters: Monster[] = JSON.parse(await readFile('resources/data/monsters.json', 'utf8'));
+
+function findPiece(name: string, version?: string): EquipmentPiece {
+  const match = equipment.find(
+    (p) => p.name === name && (version === undefined || p.version === version),
+  );
+  if (!match) throw new Error(`Missing equipment: ${name}${version ? ` (${version})` : ''}`);
+  return match;
+}
+
+function findMonster(name: string, versionIncludes?: string): Monster {
+  const match = versionIncludes
+    ? monsters.find((m) => m.name === name && (m.version || '').includes(versionIncludes))
+    : monsters.find((m) => m.name === name);
+  if (!match) throw new Error(`Missing monster: ${name}${versionIncludes ? ` (${versionIncludes})` : ''}`);
+  return match;
+}
+
+const noPrayers: Prayers = {
+  piety: false, chivalry: false, ultimateStrength: false, superhumanStrength: false,
+  burstOfStrength: false, incredibleReflexes: false, improvedReflexes: false, clarityOfThought: false,
+  rigour: false, eagleEye: false, hawkEye: false, sharpEye: false,
+  augury: false, mysticMight: false, mysticLore: false, mysticWill: false,
+};
+const noPotions: Potions = { melee: 'none', ranged: 'none', magic: 'none' };
+const maxedSkills = { atk: 99, str: 99, def: 99, hp: 99, magic: 99, ranged: 99, prayer: 99 };
+
+interface Case {
+  label: string;
+  expect: string;
+  loadout: PlayerLoadout;
+  monster: Monster;
+}
+
+const cases: Case[] = [
+  {
+    label: 'Max melee (Torva + Scythe, Piety + Super combat) vs Vorkath (Post-quest)',
+    expect: 'Max hit ~50-56 (first hit), DPS ~7-8 with Torture (Salve ei would push to ~10-12)',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'melee',
+      attackStyle: 'slash',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, piety: true },
+      potions: { ...noPotions, melee: 'super_combat' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Torva full helm'),
+        cape: findPiece('Infernal cape', 'Normal'),
+        neck: findPiece('Amulet of torture'),
+        weapon: findPiece('Scythe of vitur', 'Charged'),
+        body: findPiece('Torva platebody'),
+        legs: findPiece('Torva platelegs'),
+        hands: findPiece('Ferocious gloves'),
+        feet: findPiece('Primordial boots'),
+        ring: findPiece('Ultor ring'),
+      },
+    },
+  },
+  {
+    label: 'Scythe + Salve(ei) (Torva, Piety + Super combat) vs Vorkath (undead)',
+    expect: 'Salve(ei) adds +20% dmg & acc vs undead — max hit ~60, DPS ~10-12',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'melee',
+      attackStyle: 'slash',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, piety: true },
+      potions: { ...noPotions, melee: 'super_combat' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Torva full helm'),
+        cape: findPiece('Infernal cape', 'Normal'),
+        neck: findPiece('Salve amulet(ei)'),
+        weapon: findPiece('Scythe of vitur', 'Charged'),
+        body: findPiece('Torva platebody'),
+        legs: findPiece('Torva platelegs'),
+        hands: findPiece('Ferocious gloves'),
+        feet: findPiece('Primordial boots'),
+        ring: findPiece('Ultor ring'),
+      },
+    },
+  },
+  {
+    label: 'Max ranged (Masori + Bow of faerdhinen, Rigour + Divine ranging) vs Vorkath',
+    expect: 'Max hit ~54-58, accuracy ~80%+, DPS ~10-12',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'ranged',
+      attackStyle: 'ranged',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, rigour: true },
+      potions: { ...noPotions, ranged: 'divine_ranging' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Masori mask (f)'),
+        cape: findPiece('Dizana\'s quiver', 'Charged'),
+        neck: findPiece('Necklace of anguish'),
+        weapon: findPiece('Bow of faerdhinen', 'Charged'),
+        body: findPiece('Masori body (f)'),
+        legs: findPiece('Masori chaps (f)'),
+        hands: findPiece('Zaryte vambraces'),
+        feet: findPiece('Pegasian boots'),
+        ring: findPiece('Venator ring'),
+      },
+    },
+  },
+  {
+    label: 'Max magic (Ancestral + Tumeken\'s shadow, Augury + Saturated heart) vs Vorkath',
+    expect: 'Max hit ~60-75 (shadow x3 scaling), accuracy ~50%, DPS ~8-10',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'magic',
+      attackStyle: 'magic',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, augury: true },
+      potions: { ...noPotions, magic: 'saturated_heart' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Ancestral hat'),
+        cape: findPiece('Imbued guthix cape'),
+        neck: findPiece('Occult necklace'),
+        weapon: findPiece("Tumeken's shadow", 'Charged'),
+        body: findPiece('Ancestral robe top'),
+        legs: findPiece('Ancestral robe bottom'),
+        hands: findPiece('Tormented bracelet'),
+        feet: findPiece('Eternal boots'),
+        ring: findPiece('Magus ring'),
+      },
+    },
+  },
+  {
+    label: 'Max magic (Ancestral + Sanguinesti + Elidinis ward, Augury) vs Vorkath',
+    expect: 'Max hit ~46-50, Sang max hit at 99 mag = floor(99/3)-1 = 32 base, bumped by gear',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'magic',
+      attackStyle: 'magic',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, augury: true },
+      potions: { ...noPotions, magic: 'saturated_heart' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: null,
+      equipment: {
+        head: findPiece('Ancestral hat'),
+        cape: findPiece('Imbued guthix cape'),
+        neck: findPiece('Occult necklace'),
+        weapon: findPiece('Sanguinesti staff', 'Charged'),
+        shield: findPiece("Elidinis' ward (f)"),
+        body: findPiece('Ancestral robe top'),
+        legs: findPiece('Ancestral robe bottom'),
+        hands: findPiece('Tormented bracelet'),
+        feet: findPiece('Eternal boots'),
+        ring: findPiece('Magus ring'),
+      },
+    },
+  },
+  {
+    label: 'Max magic (Fire Surge, Kodai + tome of fire + Ancestral) vs generic training dummy-ish monster',
+    expect: 'Fire Surge at 95+ mag = 24 base. Tome of fire gives +50% = 36. With gear: ~40-44',
+    monster: findMonster('Vorkath', 'Post'),
+    loadout: {
+      style: 'magic',
+      attackStyle: 'magic',
+      skills: { ...maxedSkills },
+      prayers: { ...noPrayers, augury: true },
+      potions: { ...noPotions, magic: 'saturated_heart' },
+      onSlayerTask: false,
+      inWilderness: false,
+      spell: 'Fire Surge',
+      equipment: {
+        head: findPiece('Ancestral hat'),
+        cape: findPiece('Imbued guthix cape'),
+        neck: findPiece('Occult necklace'),
+        weapon: findPiece('Kodai wand'),
+        shield: findPiece('Tome of fire', 'Charged'),
+        body: findPiece('Ancestral robe top'),
+        legs: findPiece('Ancestral robe bottom'),
+        hands: findPiece('Tormented bracelet'),
+        feet: findPiece('Eternal boots'),
+        ring: findPiece('Magus ring'),
+      },
+    },
+  },
+];
+
+for (const c of cases) {
+  // Sweep stances like the optimizer does; report the DPS-best choice.
+  let best: { stance: WeaponStance; r: ReturnType<typeof calcDps> } | null = null;
+  for (const s of stancesForStyle(c.loadout.style)) {
+    const r = calcDps({ ...c.loadout, stance: s }, c.monster);
+    if (!best || r.dps > best.r.dps) best = { stance: s, r };
+  }
+  const { stance, r } = best!;
+  console.log(`\n== ${c.label} ==`);
+  console.log(`   expect: ${c.expect}`);
+  console.log(`   stance:   ${stance}`);
+  console.log(`   max hit:  ${r.maxHit}`);
+  console.log(`   accuracy: ${(r.accuracy * 100).toFixed(1)}%`);
+  console.log(`   DPS:      ${r.dps.toFixed(3)}`);
+  console.log(`   TTK:      ${r.ttkSeconds.toFixed(1)}s`);
+  console.log(`   detail:   effAtk=${r.details.effectiveAttack}  effStr=${r.details.effectiveStrength}  atkRoll=${r.details.attackRoll}  defRoll=${r.details.defenceRoll}`);
+}

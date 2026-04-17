@@ -116,6 +116,15 @@ export type CombatStyle = 'melee' | 'ranged' | 'magic';
 export type MeleeAttackType = 'stab' | 'slash' | 'crush';
 export type AttackType = MeleeAttackType | 'ranged' | 'magic';
 
+/** Weapon attack stance. Drives hidden atk/str/def bonuses and, for ranged, weapon speed. */
+export type WeaponStance =
+  | 'accurate'
+  | 'aggressive'
+  | 'controlled'
+  | 'defensive'
+  | 'rapid'
+  | 'longrange';
+
 export interface Prayers {
   // Melee
   piety: boolean;
@@ -163,6 +172,8 @@ export interface PlayerLoadout {
   equipment: Partial<Record<Exclude<EquipmentSlot, '2h'>, EquipmentPiece | null>>;
   /** Selected combat spell name (magic only). Ignored when a powered staff is equipped. */
   spell: string | null;
+  /** Weapon stance. Defaults to 'accurate' when omitted. */
+  stance?: WeaponStance;
 }
 
 export interface CalcResult {
@@ -187,4 +198,6 @@ export interface BestSetupCandidate {
   attackStyle: AttackType;
   /** Spell used by the candidate (magic only). Null means a powered staff drove the max hit. */
   spell?: string | null;
+  /** Stance picked by the optimizer. */
+  stance?: WeaponStance;
 }

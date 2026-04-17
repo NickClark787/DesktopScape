@@ -12,9 +12,10 @@ import type {
   MeleeAttackType,
   Monster,
   PlayerLoadout,
+  WeaponStance,
 } from '@shared/types';
 import { EQUIPMENT_SLOTS } from '@shared/types';
-import { calcDps, pieceScore } from './formulas';
+import { calcDps, pieceScore, stancesForStyle } from './formulas';
 import { CANDIDATE_SPELL_NAMES } from './spells';
 
 export interface OptimizerOptions {
@@ -147,8 +148,26 @@ export function findBestSetup(
     }
   }
 
-  const result = calcDps(current, monster);
-  return { equipment: current.equipment, result, style, attackStyle, spell: current.spell ?? null };
+  // Final stance sweep: gear is fixed, pick the DPS-best stance.
+  let bestStance: WeaponStance = current.stance ?? 'accurate';
+  let bestResult = calcDps({ ...current, stance: bestStance }, monster);
+  for (const candidateStance of stancesForStyle(style)) {
+    if (candidateStance === bestStance) continue;
+    const r = calcDps({ ...current, stance: candidateStance }, monster);
+    if (r.dps > bestResult.dps) {
+      bestResult = r;
+      bestStance = candidateStance;
+    }
+  }
+
+  return {
+    equipment: current.equipment,
+    result: bestResult,
+    style,
+    attackStyle,
+    spell: current.spell ?? null,
+    stance: bestStance,
+  };
 }
 
 export function bestMeleeAttackStyle(

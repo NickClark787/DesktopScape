@@ -15,6 +15,7 @@ import type {
   Potions,
   Prayers,
   StyleStats,
+  WeaponStance,
 } from '@shared/types';
 import {
   allowsSpellCasting,
@@ -25,6 +26,7 @@ import {
   shadowDamageMultiplier,
   spellByName,
 } from './spells';
+import { magicWeaponMult, specialAvgPerSwing, targetTypeBonus } from './weaponEffects';
 
 const SECONDS_PER_TICK = 0.6;
 
@@ -161,22 +163,46 @@ interface StanceBonus {
   magic: number;
 }
 
-function stanceBonus(style: CombatStyle, attackStyleId: string): StanceBonus {
+function stanceBonus(style: CombatStyle, stance: WeaponStance): StanceBonus {
   // OSRS: the weapon's chosen attack stance adds hidden levels.
   // "accurate" → +3 to atk (or ranged/magic), "aggressive" → +3 str, "controlled" → +1 to all, "defensive" → +3 def.
   const bonus: StanceBonus = { atk: 0, str: 0, def: 0, ranged: 0, magic: 0 };
   if (style === 'melee') {
-    if (attackStyleId === 'accurate') bonus.atk = 3;
-    else if (attackStyleId === 'aggressive') bonus.str = 3;
-    else if (attackStyleId === 'controlled') { bonus.atk = 1; bonus.str = 1; bonus.def = 1; }
-    else if (attackStyleId === 'defensive') bonus.def = 3;
+    if (stance === 'accurate') bonus.atk = 3;
+    else if (stance === 'aggressive') bonus.str = 3;
+    else if (stance === 'controlled') { bonus.atk = 1; bonus.str = 1; bonus.def = 1; }
+    else if (stance === 'defensive') bonus.def = 3;
   } else if (style === 'ranged') {
-    if (attackStyleId === 'accurate' || attackStyleId === 'rapid') bonus.ranged = 3;
-    else if (attackStyleId === 'longrange') bonus.def = 3;
+    if (stance === 'accurate') bonus.ranged = 3;
+    // 'rapid' gives no stat bonus but a faster weapon speed (handled below).
+    else if (stance === 'longrange') bonus.def = 3;
   } else if (style === 'magic') {
+    // 'accurate' adds +3 magic; 'longrange' adds +1 def and +3 magic. 'defensive casting' adds +3 def.
     bonus.magic = 3;
   }
   return bonus;
+}
+
+/**
+ * Valid stances for a given style. "rapid" is only meaningful for ranged
+ * weapons (shaves a tick off the swing). The optimizer iterates these to
+ * pick the DPS-best stance per gear set.
+ */
+export function stancesForStyle(style: CombatStyle): WeaponStance[] {
+  if (style === 'melee') return ['accurate', 'aggressive', 'controlled'];
+  if (style === 'ranged') return ['accurate', 'rapid'];
+  return ['accurate'];
+}
+
+/** Categories where 'rapid' stance reduces weapon speed by 1 tick. */
+const RAPID_REDUCES_SPEED = /bow|crossbow|chinchompa|thrown|dart|knive|javelin|blowpipe/i;
+
+/** Returns weapon speed in ticks after applying stance-specific adjustments. */
+function stanceWeaponSpeed(baseSpeed: number, style: CombatStyle, stance: WeaponStance, weapon: EquipmentPiece | null): number {
+  if (style === 'ranged' && stance === 'rapid' && weapon && RAPID_REDUCES_SPEED.test(weapon.category)) {
+    return Math.max(1, baseSpeed - 1);
+  }
+  return baseSpeed;
 }
 
 // ---------- Core DPS calc ----------
@@ -186,6 +212,7 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
   const pr = prayerMultipliers(loadout.prayers);
   const sk: PlayerSkills = { ...loadout.skills };
   const { style } = loadout;
+  const weapon = loadout.equipment.weapon ?? null;
 
   // Apply potion boosts to a copy
   if (style === 'melee') {
@@ -197,7 +224,8 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     sk.magic += potionMagic(loadout.potions.magic, sk.magic);
   }
 
-  const stance = stanceBonus(style, 'accurate');
+  const selectedStance: WeaponStance = loadout.stance ?? 'accurate';
+  const stance = stanceBonus(style, selectedStance);
 
   let effectiveAttack = 0;
   let effectiveStrength = 0;
@@ -228,7 +256,6 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     defenceRoll = (monster.skills.def + 9) * (monster.defensive.standard + 64);
   } else {
     // Magic.
-    const weapon = loadout.equipment.weapon ?? null;
     const magicLevel = sk.magic;
 
     // Apply Tumeken's-shadow multiplier to gear contributions (×3, capped at +100%).
@@ -245,12 +272,12 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     defenceRoll = (monster.skills.magic + 9) * (monster.defensive.magic + 64);
     effectiveStrength = magicLevel; // magic has no "effective strength" stat
 
-    // 1) Resolve base max hit
+    // 1) Resolve base max hit + the spell/powered-staff context for bonuses
     let baseMax = 0;
+    const spell = spellByName(loadout.spell);
     if (weapon && (isPoweredStaff(weapon) || isSalamander(weapon))) {
       baseMax = poweredStaffMaxHit(weapon.name, magicLevel) ?? 0;
     } else if (allowsSpellCasting(weapon) || weapon === null) {
-      const spell = spellByName(loadout.spell);
       if (spell) baseMax = getSpellMaxHit(spell, magicLevel);
     }
 
@@ -258,7 +285,20 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     //    maxHit = baseMax + trunc(baseMax * magicDmgBonus / 1000)
     const magicDmgBonus = geartMagicStr + pr.magicDmgAdd;
     maxHit = baseMax + Math.trunc((baseMax * magicDmgBonus) / 1000);
+
+    // 3) Apply weapon/book multiplier (Tome of fire ×1.5, Smoke staff ×1.1, …).
+    //    Spell-only — powered staves don't use spells, so bonus is identity.
+    const shield = loadout.equipment.shield ?? null;
+    const mw = magicWeaponMult(weapon, shield, spell);
+    maxHit = Math.trunc(maxHit * mw.dmgMult);
+    attackRoll = Math.trunc(attackRoll * mw.accMult);
   }
+
+  // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i)).
+  // Applied to max hit and attack roll across all styles.
+  const tb = targetTypeBonus(loadout, monster, style);
+  maxHit = Math.trunc(maxHit * tb.dmgMult);
+  attackRoll = Math.trunc(attackRoll * tb.accMult);
 
   // Attack vs defence accuracy
   let accuracy: number;
@@ -269,8 +309,11 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
   }
   accuracy = Math.max(0, Math.min(1, accuracy));
 
-  const avgHit = accuracy * (maxHit / 2);
-  const weaponSpeedTicks = eq.weaponSpeed;
+  // Most weapons deal accuracy*max/2 damage per swing. Scythe and friends
+  // deviate — delegate to weaponEffects for those, fall back to the default.
+  const specialAvg = specialAvgPerSwing(weapon, maxHit, accuracy, monster);
+  const avgHit = specialAvg ?? accuracy * (maxHit / 2);
+  const weaponSpeedTicks = stanceWeaponSpeed(eq.weaponSpeed, style, selectedStance, weapon);
   const weaponSpeedSec = weaponSpeedTicks * SECONDS_PER_TICK;
   const dps = weaponSpeedSec > 0 ? avgHit / weaponSpeedSec : 0;
 
