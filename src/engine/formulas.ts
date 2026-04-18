@@ -27,12 +27,16 @@ import {
   spellByName,
 } from './spells';
 import {
+  crystalArmourBonus,
   demonbaneMult,
+  harmonisedSpeedOverride,
   inquisitorBonus,
+  kerisBonus,
   magicWeaponMult,
   specialAvgPerSwing,
   targetTypeBonus,
   twistedBowMult,
+  voidBonus,
 } from './weaponEffects';
 
 const SECONDS_PER_TICK = 0.6;
@@ -265,6 +269,17 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const iq = inquisitorBonus(loadout.equipment, loadout.attackStyle);
     maxHit = Math.trunc(maxHit * iq.dmgMult);
     attackRoll = Math.trunc(attackRoll * iq.accMult);
+
+    // Void Knight / Elite Void — melee helm set.
+    const vm = voidBonus(loadout.equipment, 'melee');
+    maxHit = Math.trunc(maxHit * vm.dmgMult);
+    attackRoll = Math.trunc(attackRoll * vm.accMult);
+
+    // Keris / Keris partisan vs kalphite/scarab — +33% dmg (partisans) & acc
+    // (corruption). 1/51 triple-damage proc applied to avg later.
+    const kb = kerisBonus(weapon, monster);
+    maxHit = Math.trunc(maxHit * kb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * kb.accMult);
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
@@ -276,6 +291,16 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const tb = twistedBowMult(weapon, monster);
     maxHit = Math.trunc(maxHit * tb.dmgMult);
     attackRoll = Math.trunc(attackRoll * tb.accMult);
+
+    // Void Knight / Elite Void — ranger helm set.
+    const vr = voidBonus(loadout.equipment, 'ranged');
+    maxHit = Math.trunc(maxHit * vr.dmgMult);
+    attackRoll = Math.trunc(attackRoll * vr.accMult);
+
+    // Crystal armour synergy with Crystal bow / Bow of Faerdhinen.
+    const cr = crystalArmourBonus(loadout.equipment);
+    maxHit = Math.trunc(maxHit * cr.dmgMult);
+    attackRoll = Math.trunc(attackRoll * cr.accMult);
   } else {
     // Magic.
     const magicLevel = sk.magic;
@@ -314,6 +339,11 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const mw = magicWeaponMult(weapon, shield, spell);
     maxHit = Math.trunc(maxHit * mw.dmgMult);
     attackRoll = Math.trunc(attackRoll * mw.accMult);
+
+    // Void Knight / Elite Void — mage helm set.
+    const vmg = voidBonus(loadout.equipment, 'magic');
+    maxHit = Math.trunc(maxHit * vmg.dmgMult);
+    attackRoll = Math.trunc(attackRoll * vmg.accMult);
   }
 
   // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i)).
@@ -342,8 +372,18 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
   // deviate — delegate to weaponEffects for those, fall back to the default.
   const ammo = loadout.equipment.ammo ?? null;
   const specialAvg = specialAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
-  const avgHit = specialAvg ?? accuracy * (maxHit / 2);
-  const weaponSpeedTicks = stanceWeaponSpeed(eq.weaponSpeed, style, selectedStance, weapon);
+  let avgHit = specialAvg ?? accuracy * (maxHit / 2);
+
+  // Keris 1/51 triple-damage proc vs kalphite/scarab — applied to avg only.
+  if (style === 'melee') {
+    const kbAvg = kerisBonus(weapon, monster).avgDmgMult;
+    if (kbAvg !== 1) avgHit = avgHit * kbAvg;
+  }
+
+  // Weapon speed, with Harmonised nightmare staff standard-spellbook override.
+  const baseSpeed = stanceWeaponSpeed(eq.weaponSpeed, style, selectedStance, weapon);
+  const spellForSpeed = style === 'magic' ? spellByName(loadout.spell) : null;
+  const weaponSpeedTicks = harmonisedSpeedOverride(weapon, spellForSpeed, baseSpeed);
   const weaponSpeedSec = weaponSpeedTicks * SECONDS_PER_TICK;
   const dps = weaponSpeedSec > 0 ? avgHit / weaponSpeedSec : 0;
 

@@ -247,6 +247,156 @@ export function demonbaneMult(weapon: EquipmentPiece | null, monster: Monster): 
 }
 
 // -------------------------------------------------------------------------
+// Void Knight / Elite Void set bonuses
+// -------------------------------------------------------------------------
+
+const VOID_MELEE_HELM_RE = /^Void melee helm( \(or\))?$/i;
+const VOID_RANGER_HELM_RE = /^Void ranger helm( \(or\))?$/i;
+const VOID_MAGE_HELM_RE = /^Void mage helm( \(or\))?$/i;
+const VOID_TOP_RE = /^Void knight top$/i;
+const VOID_ROBE_RE = /^Void knight robe$/i;
+const ELITE_VOID_TOP_RE = /^Elite void top$/i;
+const ELITE_VOID_ROBE_RE = /^Elite void robe$/i;
+const VOID_GLOVES_RE = /^Void knight gloves$/i;
+
+interface VoidSet {
+  tier: 'void' | 'elite';
+  helm: 'melee' | 'ranger' | 'mage';
+}
+
+function detectVoidSet(eq: PlayerLoadout['equipment']): VoidSet | null {
+  const head = eq.head?.name ?? '';
+  const body = eq.body?.name ?? '';
+  const legs = eq.legs?.name ?? '';
+  const hands = eq.hands?.name ?? '';
+  if (!VOID_GLOVES_RE.test(hands)) return null;
+  const hasRegularTop = VOID_TOP_RE.test(body);
+  const hasRegularRobe = VOID_ROBE_RE.test(legs);
+  const hasEliteTop = ELITE_VOID_TOP_RE.test(body);
+  const hasEliteRobe = ELITE_VOID_ROBE_RE.test(legs);
+  const topOk = hasRegularTop || hasEliteTop;
+  const robeOk = hasRegularRobe || hasEliteRobe;
+  if (!topOk || !robeOk) return null;
+  const tier: VoidSet['tier'] = hasEliteTop && hasEliteRobe ? 'elite' : 'void';
+  if (VOID_MELEE_HELM_RE.test(head)) return { tier, helm: 'melee' };
+  if (VOID_RANGER_HELM_RE.test(head)) return { tier, helm: 'ranger' };
+  if (VOID_MAGE_HELM_RE.test(head)) return { tier, helm: 'mage' };
+  return null;
+}
+
+/**
+ * Void Knight equipment set bonuses. Requires all 4 pieces (style helm + top
+ * + robe + gloves). Melee helm gives +10% acc & str; ranger helm +10% acc &
+ * ranged str (elite adds another +2.5% str); mage helm +45% magic acc (elite
+ * adds +2.5% magic dmg). Mismatched helm/style returns identity.
+ */
+export function voidBonus(
+  eq: PlayerLoadout['equipment'],
+  style: CombatStyle,
+): { dmgMult: number; accMult: number } {
+  const set = detectVoidSet(eq);
+  if (!set) return { dmgMult: 1, accMult: 1 };
+  if (style === 'melee' && set.helm === 'melee') {
+    return { dmgMult: 1.10, accMult: 1.10 };
+  }
+  if (style === 'ranged' && set.helm === 'ranger') {
+    const dmg = set.tier === 'elite' ? 1.125 : 1.10;
+    return { dmgMult: dmg, accMult: 1.10 };
+  }
+  if (style === 'magic' && set.helm === 'mage') {
+    const dmg = set.tier === 'elite' ? 1.025 : 1.00;
+    return { dmgMult: dmg, accMult: 1.45 };
+  }
+  return { dmgMult: 1, accMult: 1 };
+}
+
+// -------------------------------------------------------------------------
+// Crystal armour + Crystal bow / Bow of Faerdhinen
+// -------------------------------------------------------------------------
+
+const CRYSTAL_HELM_RE = /^Crystal helm$/i;
+const CRYSTAL_BODY_RE = /^Crystal body$/i;
+const CRYSTAL_LEGS_RE = /^Crystal legs$/i;
+const CRYSTAL_BOW_RE = /^(Bow of faerdhinen|Crystal bow)$/i;
+
+/**
+ * Crystal armour only boosts Crystal bow and Bow of Faerdhinen. Per-piece:
+ *   helm  +2.5% dmg, +5% acc
+ *   body  +7.5% dmg, +15% acc
+ *   legs  +5% dmg, +10% acc
+ * Full set: +15% dmg, +30% acc. Bonuses stack additively and are only
+ * applied to the charged/active versions — but we match on name alone and
+ * trust upstream gear selection to pick the charged variant.
+ */
+export function crystalArmourBonus(
+  eq: PlayerLoadout['equipment'],
+): { dmgMult: number; accMult: number } {
+  const weapon = eq.weapon ?? null;
+  if (!weapon || !CRYSTAL_BOW_RE.test(weapon.name)) return { dmgMult: 1, accMult: 1 };
+  let dmg = 0;
+  let acc = 0;
+  if (eq.head && CRYSTAL_HELM_RE.test(eq.head.name)) { dmg += 0.025; acc += 0.05; }
+  if (eq.body && CRYSTAL_BODY_RE.test(eq.body.name)) { dmg += 0.075; acc += 0.15; }
+  if (eq.legs && CRYSTAL_LEGS_RE.test(eq.legs.name)) { dmg += 0.05; acc += 0.10; }
+  return { dmgMult: 1 + dmg, accMult: 1 + acc };
+}
+
+// -------------------------------------------------------------------------
+// Keris / Keris partisan — kalphite/scarab procs
+// -------------------------------------------------------------------------
+
+const KERIS_RE = /^Keris/i;
+const KERIS_DMG_PARTISAN_RE = /^(Keris partisan|Keris partisan of corruption|Keris partisan of the sun)$/i;
+const KERIS_ACC_PARTISAN_RE = /^(Keris partisan of corruption)$/i;
+
+function isKalphiteOrScarab(monster: Monster): boolean {
+  const attrs = (monster.attributes || []).map((a) => a.toLowerCase());
+  return attrs.includes('kalphite') || attrs.includes('scarab');
+}
+
+/**
+ * Keris family bonus vs kalphite/scarab attribute monsters.
+ *   - All Keris variants: 1/51 chance to deal triple damage. Expected avg
+ *     damage multiplier on a hit = (50/51) + (1/51)*3 = 52/51 ≈ 1.0196.
+ *   - Keris partisan / of corruption / of the sun: +33% passive damage.
+ *   - Keris partisan of corruption: also +33% accuracy.
+ * Returns acc/damage multipliers (max hit & attack roll) plus an avg-damage
+ * multiplier applied per-swing (for the triple-damage expected value).
+ */
+export function kerisBonus(
+  weapon: EquipmentPiece | null,
+  monster: Monster,
+): { dmgMult: number; accMult: number; avgDmgMult: number } {
+  if (!weapon || !KERIS_RE.test(weapon.name) || !isKalphiteOrScarab(monster)) {
+    return { dmgMult: 1, accMult: 1, avgDmgMult: 1 };
+  }
+  const dmgMult = KERIS_DMG_PARTISAN_RE.test(weapon.name) ? 1.33 : 1;
+  const accMult = KERIS_ACC_PARTISAN_RE.test(weapon.name) ? 1.33 : 1;
+  const avgDmgMult = 52 / 51;
+  return { dmgMult, accMult, avgDmgMult };
+}
+
+// -------------------------------------------------------------------------
+// Harmonised nightmare staff — standard spellbook speed boost
+// -------------------------------------------------------------------------
+
+/**
+ * Harmonised nightmare staff casts standard-spellbook spells one tick faster
+ * (5t → 4t). Returns the adjusted weapon speed when applicable, else the
+ * base speed unchanged.
+ */
+export function harmonisedSpeedOverride(
+  weapon: EquipmentPiece | null,
+  spell: Spell | null,
+  baseSpeed: number,
+): number {
+  if (weapon && weapon.name === 'Harmonised nightmare staff' && spell && spell.spellbook === 'standard') {
+    return Math.max(1, baseSpeed - 1);
+  }
+  return baseSpeed;
+}
+
+// -------------------------------------------------------------------------
 // Inquisitor's armour — crush-only set bonus
 // -------------------------------------------------------------------------
 
