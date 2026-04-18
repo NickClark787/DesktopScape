@@ -223,6 +223,104 @@ export function twistedBowMult(weapon: EquipmentPiece | null, monster: Monster):
 }
 
 // -------------------------------------------------------------------------
+// Wilderness weapons — +50% acc & dmg while in the wilderness
+// -------------------------------------------------------------------------
+
+const WILDY_WEAPONS = new Set([
+  "Craw's bow",
+  'Webweaver bow',
+  "Viggora's chainmace",
+  'Ursine chainmace',
+  "Thammaron's sceptre",
+  'Accursed sceptre',
+]);
+
+/**
+ * Ancient Wyvern wilderness weapons (+upgraded variants) gain +50% damage and
+ * accuracy whenever the player is in the wilderness. Outside the wild they're
+ * unremarkable.
+ */
+export function wildernessWeaponBonus(
+  weapon: EquipmentPiece | null,
+  inWilderness: boolean,
+): { dmgMult: number; accMult: number } {
+  if (!weapon || !inWilderness) return { dmgMult: 1, accMult: 1 };
+  if (!WILDY_WEAPONS.has(weapon.name)) return { dmgMult: 1, accMult: 1 };
+  return { dmgMult: 1.5, accMult: 1.5 };
+}
+
+// -------------------------------------------------------------------------
+// Colossal blade — additive max-hit bonus scaled by target size
+// -------------------------------------------------------------------------
+
+/**
+ * Colossal blade adds `min(size * 2, 10)` flat damage to max hit. Bigger
+ * monsters → bigger bonus. Applies to melee and is additive (not a
+ * multiplier), so returns a number to add to max hit before accuracy.
+ */
+export function colossalBladeBonus(
+  weapon: EquipmentPiece | null,
+  monster: Monster,
+): number {
+  if (!weapon || weapon.name !== 'Colossal blade') return 0;
+  return Math.min(10, Math.max(1, monster.size) * 2);
+}
+
+// -------------------------------------------------------------------------
+// Vampyre weapons — Blisterwood / Ivandis / Efaritay's aid
+// -------------------------------------------------------------------------
+
+function vampyreTier(monster: Monster): 0 | 1 | 2 | 3 {
+  for (const a of monster.attributes || []) {
+    const lc = a.toLowerCase();
+    if (lc === 'vampyre1') return 1;
+    if (lc === 'vampyre2') return 2;
+    if (lc === 'vampyre3') return 3;
+  }
+  return 0;
+}
+
+const BLISTERWOOD_RE = /^Blisterwood (flail|sickle|staff)$/i;
+
+/**
+ * Vampyre-specific weapon bonuses vs tier 2/3 vampyres:
+ *   - Blisterwood flail/sickle/staff: +25% damage, +5% accuracy (T2/T3).
+ *   - Ivandis flail: +20% damage (T2 only).
+ * Returns identity against non-vampyres or when the weapon doesn't qualify.
+ */
+export function vampyreWeaponBonus(
+  weapon: EquipmentPiece | null,
+  monster: Monster,
+): { dmgMult: number; accMult: number } {
+  const tier = vampyreTier(monster);
+  if (!weapon || tier === 0) return { dmgMult: 1, accMult: 1 };
+  if (BLISTERWOOD_RE.test(weapon.name) && tier >= 2) {
+    return { dmgMult: 1.25, accMult: 1.05 };
+  }
+  if (weapon.name === 'Ivandis flail' && tier === 2) {
+    return { dmgMult: 1.20, accMult: 1 };
+  }
+  return { dmgMult: 1, accMult: 1 };
+}
+
+/**
+ * Efaritay's aid (worn in any slot that accepts it, typically ring) grants
+ * +10% accuracy vs any tier of vampyre — stacks with vampyre weapons. No
+ * damage effect.
+ */
+export function efaritayAccuracyBonus(
+  eq: PlayerLoadout['equipment'],
+  monster: Monster,
+): number {
+  if (vampyreTier(monster) === 0) return 1;
+  // Efaritay's aid equips in unspecified slot; match by name across all slots.
+  for (const piece of Object.values(eq)) {
+    if (piece && piece.name === "Efaritay's aid") return 1.10;
+  }
+  return 1;
+}
+
+// -------------------------------------------------------------------------
 // Dragon hunter weapons — DHL / DHCB / DHW
 // -------------------------------------------------------------------------
 

@@ -28,9 +28,11 @@ import {
 } from './spells';
 import {
   berserkerNeckBonus,
+  colossalBladeBonus,
   crystalArmourBonus,
   demonbaneMult,
   dragonHunterMult,
+  efaritayAccuracyBonus,
   harmonisedSpeedOverride,
   inquisitorBonus,
   kerisBonus,
@@ -40,8 +42,10 @@ import {
   specialAvgPerSwing,
   targetTypeBonus,
   twistedBowMult,
+  vampyreWeaponBonus,
   virtusBonus,
   voidBonus,
+  wildernessWeaponBonus,
 } from './weaponEffects';
 
 const SECONDS_PER_TICK = 0.6;
@@ -297,6 +301,14 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     attackRoll = Math.trunc(attackRoll * ob.accMult);
     const bn = berserkerNeckBonus(loadout.equipment);
     maxHit = Math.trunc(maxHit * bn.dmgMult);
+
+    // Colossal blade: +min(size*2, 10) flat damage to max hit.
+    maxHit += colossalBladeBonus(weapon, monster);
+
+    // Vampyre weapons (Blisterwood / Ivandis flail) vs T2/T3 vampyres.
+    const vb = vampyreWeaponBonus(weapon, monster);
+    maxHit = Math.trunc(maxHit * vb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * vb.accMult);
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
@@ -381,6 +393,14 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     maxHit = Math.trunc(maxHit * dhw.dmgMult);
     attackRoll = Math.trunc(attackRoll * dhw.accMult);
   }
+
+  // Wilderness weapons — +50% dmg & acc when wielded in the wild.
+  const wb = wildernessWeaponBonus(weapon, loadout.inWilderness);
+  maxHit = Math.trunc(maxHit * wb.dmgMult);
+  attackRoll = Math.trunc(attackRoll * wb.accMult);
+
+  // Efaritay's aid — +10% acc vs vampyres (any tier), any style.
+  attackRoll = Math.trunc(attackRoll * efaritayAccuracyBonus(loadout.equipment, monster));
 
   // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i)).
   // Applied to max hit and attack roll across all styles.
