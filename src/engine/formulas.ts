@@ -27,15 +27,20 @@ import {
   spellByName,
 } from './spells';
 import {
+  berserkerNeckBonus,
   crystalArmourBonus,
   demonbaneMult,
+  dragonHunterMult,
   harmonisedSpeedOverride,
   inquisitorBonus,
   kerisBonus,
   magicWeaponMult,
+  obsidianArmourBonus,
+  scorchingBowMult,
   specialAvgPerSwing,
   targetTypeBonus,
   twistedBowMult,
+  virtusBonus,
   voidBonus,
 } from './weaponEffects';
 
@@ -280,6 +285,18 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const kb = kerisBonus(weapon, monster);
     maxHit = Math.trunc(maxHit * kb.dmgMult);
     attackRoll = Math.trunc(attackRoll * kb.accMult);
+
+    // Dragon hunter lance vs dragons.
+    const dh = dragonHunterMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * dh.dmgMult);
+    attackRoll = Math.trunc(attackRoll * dh.accMult);
+
+    // Obsidian armour set + Berserker necklace synergy with obsidian melee weapons.
+    const ob = obsidianArmourBonus(loadout.equipment);
+    maxHit = Math.trunc(maxHit * ob.dmgMult);
+    attackRoll = Math.trunc(attackRoll * ob.accMult);
+    const bn = berserkerNeckBonus(loadout.equipment);
+    maxHit = Math.trunc(maxHit * bn.dmgMult);
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
@@ -301,6 +318,16 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const cr = crystalArmourBonus(loadout.equipment);
     maxHit = Math.trunc(maxHit * cr.dmgMult);
     attackRoll = Math.trunc(attackRoll * cr.accMult);
+
+    // Dragon hunter crossbow vs dragons.
+    const dhr = dragonHunterMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * dhr.dmgMult);
+    attackRoll = Math.trunc(attackRoll * dhr.accMult);
+
+    // Scorching bow vs demons — ranged demonbane.
+    const sb = scorchingBowMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * sb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * sb.accMult);
   } else {
     // Magic.
     const magicLevel = sk.magic;
@@ -344,6 +371,15 @@ export function calcDps(loadout: PlayerLoadout, monster: Monster): CalcResult {
     const vmg = voidBonus(loadout.equipment, 'magic');
     maxHit = Math.trunc(maxHit * vmg.dmgMult);
     attackRoll = Math.trunc(attackRoll * vmg.accMult);
+
+    // Virtus robes — per-piece bonus on ancient-spellbook spells.
+    const vir = virtusBonus(loadout.equipment, spell);
+    maxHit = Math.trunc(maxHit * vir.dmgMult);
+
+    // Dragon hunter wand vs dragons — +50% acc, +20% dmg.
+    const dhw = dragonHunterMult(weapon, monster);
+    maxHit = Math.trunc(maxHit * dhw.dmgMult);
+    attackRoll = Math.trunc(attackRoll * dhw.accMult);
   }
 
   // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i)).

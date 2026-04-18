@@ -223,6 +223,121 @@ export function twistedBowMult(weapon: EquipmentPiece | null, monster: Monster):
 }
 
 // -------------------------------------------------------------------------
+// Dragon hunter weapons — DHL / DHCB / DHW
+// -------------------------------------------------------------------------
+
+function isDragon(monster: Monster): boolean {
+  return (monster.attributes || []).some((a) => a.toLowerCase() === 'dragon');
+}
+
+/**
+ * Dragon hunter weapons vs dragon-attribute monsters.
+ *   - Dragon hunter lance: +20% dmg & acc (melee).
+ *   - Dragon hunter crossbow: +30% dmg, +30% acc (ranged).
+ *   - Dragon hunter wand: +50% acc, +20% dmg (magic).
+ * Returns identity when weapon or target doesn't qualify.
+ */
+export function dragonHunterMult(
+  weapon: EquipmentPiece | null,
+  monster: Monster,
+): { dmgMult: number; accMult: number } {
+  if (!weapon || !isDragon(monster)) return { dmgMult: 1, accMult: 1 };
+  if (weapon.name === 'Dragon hunter lance') return { dmgMult: 1.20, accMult: 1.20 };
+  if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.30, accMult: 1.30 };
+  if (weapon.name === 'Dragon hunter wand') return { dmgMult: 1.20, accMult: 1.50 };
+  return { dmgMult: 1, accMult: 1 };
+}
+
+/**
+ * Scorching bow — ranged demonbane equivalent. +30% dmg & acc vs demons.
+ */
+export function scorchingBowMult(
+  weapon: EquipmentPiece | null,
+  monster: Monster,
+): { dmgMult: number; accMult: number } {
+  if (!weapon || weapon.name !== 'Scorching bow') return { dmgMult: 1, accMult: 1 };
+  if (!isDemon(monster)) return { dmgMult: 1, accMult: 1 };
+  return { dmgMult: 1.30, accMult: 1.30 };
+}
+
+// -------------------------------------------------------------------------
+// Obsidian armour + Berserker necklace synergy
+// -------------------------------------------------------------------------
+
+const OBSIDIAN_HELM_RE = /^Obsidian helmet$/i;
+const OBSIDIAN_BODY_RE = /^Obsidian platebody$/i;
+const OBSIDIAN_LEGS_RE = /^Obsidian platelegs$/i;
+const OBSIDIAN_MELEE_WEAPONS = new Set([
+  'Toktz-xil-ak',       // sword
+  'Tzhaar-ket-em',      // mace
+  'Tzhaar-ket-om',      // maul
+  'Tzhaar-ket-om (t)',
+  'Toktz-xil-ek',       // dagger
+]);
+
+function isObsidianMeleeWeapon(weapon: EquipmentPiece | null): boolean {
+  return !!weapon && OBSIDIAN_MELEE_WEAPONS.has(weapon.name);
+}
+
+/**
+ * Obsidian armour set (helm + body + legs) gives +10% acc & dmg when wielding
+ * an obsidian melee weapon. Multiplicative on max hit and attack roll.
+ */
+export function obsidianArmourBonus(
+  eq: PlayerLoadout['equipment'],
+): { dmgMult: number; accMult: number } {
+  const weapon = eq.weapon ?? null;
+  if (!isObsidianMeleeWeapon(weapon)) return { dmgMult: 1, accMult: 1 };
+  const head = eq.head?.name ?? '';
+  const body = eq.body?.name ?? '';
+  const legs = eq.legs?.name ?? '';
+  const full = OBSIDIAN_HELM_RE.test(head) && OBSIDIAN_BODY_RE.test(body) && OBSIDIAN_LEGS_RE.test(legs);
+  if (!full) return { dmgMult: 1, accMult: 1 };
+  return { dmgMult: 1.10, accMult: 1.10 };
+}
+
+/**
+ * Berserker necklace adds +20% damage with obsidian melee weapons. Stacks
+ * multiplicatively with the Obsidian armour set bonus. No accuracy effect.
+ */
+export function berserkerNeckBonus(
+  eq: PlayerLoadout['equipment'],
+): { dmgMult: number; accMult: number } {
+  const weapon = eq.weapon ?? null;
+  if (!isObsidianMeleeWeapon(weapon)) return { dmgMult: 1, accMult: 1 };
+  if (eq.neck?.name === 'Berserker necklace' || eq.neck?.name === 'Berserker necklace (or)') {
+    return { dmgMult: 1.20, accMult: 1 };
+  }
+  return { dmgMult: 1, accMult: 1 };
+}
+
+// -------------------------------------------------------------------------
+// Virtus robes — ancient-spellbook damage bonus
+// -------------------------------------------------------------------------
+
+const VIRTUS_HELM_RE = /^Virtus mask$/i;
+const VIRTUS_TOP_RE = /^Virtus robe top$/i;
+const VIRTUS_LEGS_RE = /^Virtus robe bottom$/i;
+
+/**
+ * Virtus robes give +3% magic damage per piece while casting ancient
+ * spellbook spells (helm + top + legs = +9% total). No accuracy effect.
+ * Applied multiplicatively to max hit after other magic bonuses.
+ */
+export function virtusBonus(
+  eq: PlayerLoadout['equipment'],
+  spell: Spell | null,
+): { dmgMult: number; accMult: number } {
+  if (!spell || spell.spellbook !== 'ancient') return { dmgMult: 1, accMult: 1 };
+  let pieces = 0;
+  if (eq.head && VIRTUS_HELM_RE.test(eq.head.name)) pieces++;
+  if (eq.body && VIRTUS_TOP_RE.test(eq.body.name)) pieces++;
+  if (eq.legs && VIRTUS_LEGS_RE.test(eq.legs.name)) pieces++;
+  if (pieces === 0) return { dmgMult: 1, accMult: 1 };
+  return { dmgMult: 1 + 0.03 * pieces, accMult: 1 };
+}
+
+// -------------------------------------------------------------------------
 // Demonbane weapons — Arclight / Emberlight / Darklight
 // -------------------------------------------------------------------------
 
