@@ -37,9 +37,61 @@ function pieceLabel(p: EquipmentPiece): string {
   return p.version ? `${p.name} (${p.version})` : p.name;
 }
 
+/** Format a +N or -N number with an explicit sign for tooltip readability. */
+function s(n: number): string {
+  return n > 0 ? `+${n}` : String(n);
+}
+
+/**
+ * Build a multi-line stats summary suitable for a native `title` tooltip.
+ * Skips zero-valued lines so a typical chip isn't a wall of "+0"s. Newlines
+ * render as line breaks in browser tooltips.
+ */
+function pieceTooltip(p: EquipmentPiece): string {
+  const lines: string[] = [pieceLabel(p)];
+  const slotLabel = p.slot === '2h' ? 'weapon (2h)' : p.slot;
+  lines.push(slotLabel);
+
+  const off = p.offensive;
+  const offParts = [
+    off.stab && `stab ${s(off.stab)}`,
+    off.slash && `slash ${s(off.slash)}`,
+    off.crush && `crush ${s(off.crush)}`,
+    off.magic && `magic ${s(off.magic)}`,
+    off.ranged && `ranged ${s(off.ranged)}`,
+  ].filter(Boolean);
+  if (offParts.length) lines.push(`Attack: ${offParts.join(', ')}`);
+
+  const b = p.bonuses;
+  const bonusParts = [
+    b.str && `str ${s(b.str)}`,
+    b.ranged_str && `ranged str ${s(b.ranged_str)}`,
+    b.magic_str && `magic dmg ${s(b.magic_str)}%`,
+    b.prayer && `prayer ${s(b.prayer)}`,
+  ].filter(Boolean);
+  if (bonusParts.length) lines.push(`Bonus: ${bonusParts.join(', ')}`);
+
+  const def = p.defensive;
+  const defParts = [
+    def.stab && `stab ${s(def.stab)}`,
+    def.slash && `slash ${s(def.slash)}`,
+    def.crush && `crush ${s(def.crush)}`,
+    def.magic && `magic ${s(def.magic)}`,
+    def.ranged && `ranged ${s(def.ranged)}`,
+  ].filter(Boolean);
+  if (defParts.length) lines.push(`Defence: ${defParts.join(', ')}`);
+
+  // Speed is only meaningful for weapons.
+  if (p.slot === 'weapon' && p.speed) {
+    lines.push(`Speed: ${p.speed} tick${p.speed === 1 ? '' : 's'}`);
+  }
+
+  return lines.join('\n');
+}
+
 export function GearIcon({ piece, size = 'sm', title, className }: Props) {
   if (!piece) return null;
-  const label = title ?? pieceLabel(piece);
+  const label = title ?? pieceTooltip(piece);
   const src = window.gearscape.cdnImage(piece.image);
 
   if (size === 'lg') {
