@@ -115,6 +115,12 @@ export interface AppState {
   setOnSlayerTask: (v: boolean) => void;
   setInWilderness: (v: boolean) => void;
   setAttackStyle: (v: PlayerLoadout['attackStyle']) => void;
+  /**
+   * Sets the loadout's attack stance directly (separate from the optimizer
+   * override). Used by the gear picker after a weapon swap so the displayed
+   * DPS reflects the stance the picker computed it under.
+   */
+  setStance: (v: WeaponStance | undefined) => void;
   setSpell: (v: string | null) => void;
   setRaidScaling: (v: RaidScaling | undefined) => void;
   hydrate: (data: { equipment: EquipmentPiece[]; monsters: Monster[]; meta?: DataMeta }) => void;
@@ -252,6 +258,7 @@ export const useApp = create<AppState>((set) => ({
   setOnSlayerTask: (v) => set((st) => ({ loadout: { ...st.loadout, onSlayerTask: v } })),
   setInWilderness: (v) => set((st) => ({ loadout: { ...st.loadout, inWilderness: v } })),
   setAttackStyle: (v) => set((st) => ({ loadout: { ...st.loadout, attackStyle: v } })),
+  setStance: (v) => set((st) => ({ loadout: { ...st.loadout, stance: v } })),
   setSpell: (v) => set((st) => ({ loadout: { ...st.loadout, spell: v } })),
   setRaidScaling: (v) => set((st) => ({ loadout: { ...st.loadout, raidScaling: v } })),
   hydrate: ({ equipment, monsters, meta }) => set({ equipment, monsters, loading: false, dataMeta: meta ?? null }),

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import fuzzysort from 'fuzzysort';
-import type { EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout } from '@shared/types';
-import { calcDps } from '../../engine/formulas';
+import type { AttackType, EquipmentPiece, EquipmentSlot, MeleeAttackType, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
+import { calcDps, stancesForStyle } from '../../engine/formulas';
 import { GearIcon } from './GearIcon';
 
 type Slot = Exclude<EquipmentSlot, '2h'>;
@@ -24,7 +24,16 @@ interface Props {
   loadout: PlayerLoadout;
   /** Target monster — when null, the picker falls back to a stats summary. */
   target: Monster | null;
-  onPick: (piece: EquipmentPiece | null) => void;
+  /**
+   * Called when the user picks a piece (or chooses Unequip — `piece === null`).
+   * For weapon swaps, `hint.stance` and `hint.attackStyle` carry the
+   * combination the picker found best for the new weapon — App should apply
+   * them so the engine sees the stance the displayed DPS was computed under.
+   */
+  onPick: (
+    piece: EquipmentPiece | null,
+    hint?: { stance?: WeaponStance; attackStyle?: AttackType },
+  ) => void;
   onClose: () => void;
 }
 
@@ -82,28 +91,55 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
 
   /**
    * Per-candidate DPS computed by substituting the candidate into `slot` and
-   * running calcDps once. Map keyed by `${id}-${version}` so two variants of
-   * the same item don't collide.
+   * running calcDps. Map keyed by `${id}-${version}` so two variants of the
+   * same item don't collide.
    *
-   * Cost: O(results.length) calcDps calls per modal render. Each calcDps is
-   * cheap straight-line math (no shortlist iteration), and results is capped
-   * at 200, so this runs comfortably under a frame budget. Memoized over
-   * (results, loadout, target) so typing in the search box doesn't trigger
-   * a recompute for already-evaluated rows.
+   * For weapon swaps we additionally probe the valid stance × attack-style
+   * combinations and keep the max-DPS pick — the prior stance/attack-style
+   * was tied to the *previous* weapon and may not even be valid for the new
+   * one (e.g. swapping a stab dagger to a slash scimitar). Carrying the
+   * picked stance/attackStyle in the value lets App apply them on click,
+   * keeping the engine's view consistent.
+   *
+   * Cost ceiling: 200 weapon candidates × ~3 melee styles × ~3 stances ≈
+   * 1800 calcDps calls per render. Each call is straight-line math, well
+   * under a frame.
    */
   const dpsByKey = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { dps: number; stance: WeaponStance; attackStyle: AttackType }>();
     if (!target) return map;
+    const baseStance: WeaponStance = loadout.stance ?? 'accurate';
+    const baseAttack: AttackType = loadout.attackStyle;
     for (const p of results) {
       const nextEquipment = { ...loadout.equipment };
       nextEquipment[slot] = p;
-      // Mirror the 2h⇆shield mutual exclusion enforced by store.setSlot and
-      // App.pickSlot, so the picker's preview matches what the user will
-      // actually get when they click.
       if (slot === 'weapon' && p.isTwoHanded) nextEquipment.shield = null;
       else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
-      const r = calcDps({ ...loadout, equipment: nextEquipment }, target);
-      map.set(`${p.id}-${p.version}`, r.dps);
+
+      // Non-weapon swaps inherit the current stance/attackStyle — gear
+      // pieces don't change which stances are available, and re-probing
+      // would just add noise.
+      if (slot !== 'weapon') {
+        const r = calcDps({ ...loadout, equipment: nextEquipment }, target);
+        map.set(`${p.id}-${p.version}`, { dps: r.dps, stance: baseStance, attackStyle: baseAttack });
+        continue;
+      }
+
+      // Weapon swap: iterate stance × attack-style and keep the winner.
+      const stances = stancesForStyle(loadout.style);
+      const attackStyles: AttackType[] =
+        loadout.style === 'melee' ? (['stab', 'slash', 'crush'] as MeleeAttackType[]) : [loadout.style];
+      let best: { dps: number; stance: WeaponStance; attackStyle: AttackType } | null = null;
+      for (const st of stances) {
+        for (const atk of attackStyles) {
+          const r = calcDps(
+            { ...loadout, equipment: nextEquipment, stance: st, attackStyle: atk },
+            target,
+          );
+          if (!best || r.dps > best.dps) best = { dps: r.dps, stance: st, attackStyle: atk };
+        }
+      }
+      if (best) map.set(`${p.id}-${p.version}`, best);
     }
     return map;
   }, [results, loadout, target, slot]);
@@ -114,8 +150,8 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
   const sortedResults = useMemo(() => {
     if (!sortByDps || !target) return results;
     return [...results].sort((a, b) => {
-      const da = dpsByKey.get(`${a.id}-${a.version}`) ?? -Infinity;
-      const db = dpsByKey.get(`${b.id}-${b.version}`) ?? -Infinity;
+      const da = dpsByKey.get(`${a.id}-${a.version}`)?.dps ?? -Infinity;
+      const db = dpsByKey.get(`${b.id}-${b.version}`)?.dps ?? -Infinity;
       return db - da;
     });
   }, [results, dpsByKey, sortByDps, target]);
@@ -177,12 +213,22 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
               <div className="divide-y divide-border">
                 {sortedResults.map((p) => {
                   const isCurrent = current?.id === p.id;
-                  const dps = dpsByKey.get(`${p.id}-${p.version}`);
+                  const entry = dpsByKey.get(`${p.id}-${p.version}`);
+                  const dps = entry?.dps;
                   const delta = dps !== undefined && baselineDps !== null ? dps - baselineDps : null;
+                  // For weapon swaps, surface when the picker had to switch
+                  // stance or attack style for this weapon — otherwise the
+                  // user has no visibility into "why does this DPS look
+                  // different from what I'd expect".
+                  const stanceChanged = entry && slot === 'weapon' && entry.stance !== (loadout.stance ?? 'accurate');
+                  const attackChanged = entry && slot === 'weapon' && loadout.style === 'melee' && entry.attackStyle !== loadout.attackStyle;
                   return (
                     <button
                       key={`${p.id}-${p.version}`}
-                      onClick={() => { onPick(p); onClose(); }}
+                      onClick={() => {
+                        onPick(p, entry ? { stance: entry.stance, attackStyle: entry.attackStyle } : undefined);
+                        onClose();
+                      }}
                       className={[
                         'w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition',
                         isCurrent ? 'bg-accent/10 text-accent' : 'hover:bg-bg-raised',
@@ -196,6 +242,12 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
                         </span>
                         <span className="block text-[11px] text-text-faint">
                           {summarizeStats(p)}
+                          {(stanceChanged || attackChanged) && (
+                            <span className="text-amber-400"> · auto: {[
+                              attackChanged && entry!.attackStyle,
+                              stanceChanged && entry!.stance,
+                            ].filter(Boolean).join(' / ')}</span>
+                          )}
                         </span>
                       </span>
                       {dps !== undefined && delta !== null && (

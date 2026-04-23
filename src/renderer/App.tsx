@@ -15,7 +15,7 @@ import { DataStalenessBadge } from './components/DataStalenessBadge';
 import { GearPickerModal } from './components/GearPickerModal';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import { calcDps } from '../engine/formulas';
-import type { BestSetupCandidate, EquipmentPiece, EquipmentSlot } from '@shared/types';
+import type { AttackType, BestSetupCandidate, EquipmentPiece, EquipmentSlot, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
 
 export default function App() {
@@ -74,11 +74,29 @@ export default function App() {
   /**
    * Apply a manual slot swap and re-derive the displayed candidate so DPS,
    * accuracy, and the effects list stay in sync with what's actually equipped.
-   * Falls back to clearing the candidate when the user can't be evaluated yet
-   * (no monster picked) — the gear edit still goes through.
+   *
+   * `hint` carries the picker's optimal stance + attack style for the new
+   * piece (only set for weapon swaps — non-weapon swaps inherit the current
+   * stance/attackStyle). When provided we apply it to the loadout so the
+   * engine evaluates the swap under the same combination the picker did.
+   *
+   * Falls back to clearing the candidate when no monster is picked — the
+   * gear edit still goes through; the user just won't see updated metrics
+   * until they pick a target.
    */
-  function pickSlot(slot: Exclude<EquipmentSlot, '2h'>, piece: EquipmentPiece | null) {
+  function pickSlot(
+    slot: Exclude<EquipmentSlot, '2h'>,
+    piece: EquipmentPiece | null,
+    hint?: { stance?: WeaponStance; attackStyle?: AttackType },
+  ) {
     state.setSlot(slot, piece);
+    // Persist the auto-picked stance/attack-style to the loadout so future
+    // edits (and a re-run of "Find best setup" if the user pins anything)
+    // see the right baseline.
+    const effectiveStance = hint?.stance ?? candidate?.stance ?? state.loadout.stance;
+    const effectiveAttack = hint?.attackStyle ?? candidate?.attackStyle ?? state.loadout.attackStyle;
+    if (hint?.stance !== undefined) state.setStance(hint.stance);
+    if (hint?.attackStyle !== undefined) state.setAttackStyle(hint.attackStyle);
     if (!selectedMonster) return;
     // Build the next equipment locally — store updates haven't flushed yet.
     const nextEquipment = { ...state.loadout.equipment };
@@ -92,8 +110,8 @@ export default function App() {
     const nextLoadout = {
       ...state.loadout,
       style: state.style,
-      attackStyle: candidate?.attackStyle ?? state.loadout.attackStyle,
-      stance: candidate?.stance ?? state.loadout.stance,
+      attackStyle: effectiveAttack,
+      stance: effectiveStance,
       equipment: nextEquipment,
     };
     const result = calcDps(nextLoadout, selectedMonster);
@@ -229,7 +247,7 @@ export default function App() {
             stance: candidate?.stance ?? state.loadout.stance,
           }}
           target={selectedMonster}
-          onPick={(piece) => pickSlot(pickerSlot, piece)}
+          onPick={(piece, hint) => pickSlot(pickerSlot, piece, hint)}
           onClose={() => setPickerSlot(null)}
         />
       )}
