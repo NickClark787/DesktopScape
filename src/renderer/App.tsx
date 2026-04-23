@@ -165,7 +165,7 @@ export default function App() {
               onStanceChange={state.setStanceOverride}
               onAttackStyleChange={state.setAttackStyleOverride}
             />
-            <ResultsPanel candidate={candidate} computing={computing} />
+            <ResultsPanel candidate={candidate} target={selectedMonster} computing={computing} />
           </main>
         </div>
       </div>

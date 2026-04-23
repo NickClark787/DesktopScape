@@ -1,4 +1,5 @@
 import type { EquipmentPiece } from '@shared/types';
+import { isFailedImage, markFailedImage } from './imageCache';
 
 /**
  * Single-piece equipment icon backed by the OSRS Wiki CDN.
@@ -94,6 +95,23 @@ export function GearIcon({ piece, size = 'sm', title, className }: Props) {
   const label = title ?? pieceTooltip(piece);
   const src = window.gearscape.cdnImage(piece.image);
 
+  // Skip the network round-trip + visible torn-icon flash for URLs we've
+  // already seen 404 in this session. We render a same-sized invisible
+  // placeholder so layout stays identical.
+  if (isFailedImage(src)) {
+    if (size === 'lg') {
+      return <div className={['w-full h-full', className ?? ''].join(' ')} title={label} />;
+    }
+    const px = SIZE_PX[size];
+    return (
+      <div
+        title={label}
+        className={['shrink-0', className ?? ''].join(' ')}
+        style={{ width: px, height: px }}
+      />
+    );
+  }
+
   if (size === 'lg') {
     // Caller controls the box; we just fill it.
     return (
@@ -103,7 +121,10 @@ export function GearIcon({ piece, size = 'sm', title, className }: Props) {
         title={label}
         className={['w-full h-full object-contain p-1', className ?? ''].join(' ')}
         style={{ imageRendering: 'pixelated' }}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+        onError={(e) => {
+          markFailedImage(src);
+          (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+        }}
       />
     );
   }
@@ -118,7 +139,10 @@ export function GearIcon({ piece, size = 'sm', title, className }: Props) {
       height={px}
       className={['object-contain shrink-0', className ?? ''].join(' ')}
       style={{ imageRendering: 'pixelated', width: px, height: px }}
-      onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+      onError={(e) => {
+        markFailedImage(src);
+        (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
+      }}
     />
   );
 }

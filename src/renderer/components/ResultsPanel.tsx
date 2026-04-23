@@ -1,9 +1,13 @@
-import type { BestSetupCandidate } from '@shared/types';
+import type { BestSetupCandidate, Monster } from '@shared/types';
 import { GearGrid } from './GearGrid';
 import { GearIcon } from './GearIcon';
+import { MonsterIcon } from './MonsterIcon';
 
 interface Props {
   candidate: BestSetupCandidate | null;
+  /** The monster the candidate was computed against. Shown in the header so
+   *  the user always sees *what* the recommended setup is for. */
+  target: Monster | null;
   computing: boolean;
 }
 
@@ -12,7 +16,7 @@ function fmt(n: number, digits = 2) {
   return n.toFixed(digits);
 }
 
-export function ResultsPanel({ candidate, computing }: Props) {
+export function ResultsPanel({ candidate, target, computing }: Props) {
   if (computing) {
     return (
       <div className="panel flex-1 flex items-center justify-center p-12">
@@ -40,6 +44,18 @@ export function ResultsPanel({ candidate, computing }: Props) {
         <span>Recommended setup</span>
         <span className="text-text-faint normal-case">{style} · {attackStyle}</span>
       </div>
+      {target && (
+        <div className="px-5 pt-4 flex items-center gap-3">
+          <MonsterIcon monster={target} size="md" />
+          <div className="flex flex-col min-w-0">
+            <span className="text-[11px] uppercase tracking-wider text-text-faint">vs target</span>
+            <span className="text-sm truncate" title={target.version ? `${target.name} (${target.version})` : target.name}>
+              {target.name}
+              {target.version && <span className="text-text-faint"> · {target.version}</span>}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="p-5 grid grid-cols-[auto_1fr] gap-6">
         <GearGrid equipment={equipment} />
         <div className="flex flex-col gap-4">

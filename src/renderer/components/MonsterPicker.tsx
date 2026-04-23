@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import fuzzysort from 'fuzzysort';
 import type { Monster } from '@shared/types';
+import { MonsterIcon } from './MonsterIcon';
 
 interface Props {
   monsters: Monster[];
@@ -24,9 +25,12 @@ export function MonsterPicker({ monsters, selectedId, onSelect }: Props) {
 
   return (
     <div className="panel">
-      <div className="panel-heading flex items-center justify-between">
-        <span>Encounter</span>
-        {selected && <span className="text-text-faint normal-case">Lvl {selected.level} · {selected.skills.hp} HP</span>}
+      <div className="panel-heading flex items-center justify-between gap-2">
+        <span className="flex items-center gap-2">
+          {selected && <MonsterIcon monster={selected} size="xs" />}
+          <span>Encounter</span>
+        </span>
+        {selected && <span className="text-text-faint normal-case truncate">Lvl {selected.level} · {selected.skills.hp} HP</span>}
       </div>
       <div className="p-3">
         <input
@@ -51,15 +55,7 @@ export function MonsterPicker({ monsters, selectedId, onSelect }: Props) {
                   active ? 'bg-accent/10 text-accent' : 'hover:bg-bg-raised text-text',
                 ].join(' ')}
               >
-                <img
-                  src={window.gearscape.cdnImage(m.image)}
-                  alt=""
-                  width={28}
-                  height={28}
-                  className="pixelated"
-                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                  style={{ imageRendering: 'pixelated' }}
-                />
+                <MonsterIcon monster={m} size="sm" />
                 <span className="flex-1 truncate">
                   {m.name}
                   {m.version && <span className="text-text-faint"> · {m.version}</span>}
