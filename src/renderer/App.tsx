@@ -219,6 +219,16 @@ export default function App() {
           equipment={state.equipment}
           current={state.loadout.equipment[pickerSlot] ?? null}
           ownedOnly={state.ownedFilterEnabled ? state.ownedIds : null}
+          // The picker uses this loadout as the substitution base for delta
+          // calc. Fold in the displayed candidate's stance/attackStyle so the
+          // baseline matches what the user is actually looking at.
+          loadout={{
+            ...state.loadout,
+            style: state.style,
+            attackStyle: candidate?.attackStyle ?? state.loadout.attackStyle,
+            stance: candidate?.stance ?? state.loadout.stance,
+          }}
+          target={selectedMonster}
           onPick={(piece) => pickSlot(pickerSlot, piece)}
           onClose={() => setPickerSlot(null)}
         />

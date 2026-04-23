@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import fuzzysort from 'fuzzysort';
-import type { EquipmentPiece, EquipmentSlot } from '@shared/types';
+import type { EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout } from '@shared/types';
+import { calcDps } from '../../engine/formulas';
 import { GearIcon } from './GearIcon';
 
 type Slot = Exclude<EquipmentSlot, '2h'>;
@@ -14,6 +15,15 @@ interface Props {
   current: EquipmentPiece | null | undefined;
   /** Optional owned-only restriction. When non-null, only owned items appear. */
   ownedOnly: Set<number> | null;
+  /**
+   * Effective loadout — used as the substitution base when computing per-row
+   * DPS deltas. Pass the same loadout `App.pickSlot` would apply (i.e. with
+   * the candidate's stance/attackStyle folded in if a candidate exists), so
+   * delta = "DPS if I pick this row" - "DPS as currently equipped".
+   */
+  loadout: PlayerLoadout;
+  /** Target monster — when null, the picker falls back to a stats summary. */
+  target: Monster | null;
   onPick: (piece: EquipmentPiece | null) => void;
   onClose: () => void;
 }
@@ -23,8 +33,13 @@ const SLOT_TITLE: Record<Slot, string> = {
   body: 'Body', shield: 'Shield', legs: 'Legs', hands: 'Hands', feet: 'Feet', ring: 'Ring',
 };
 
-export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, onClose }: Props) {
+export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, target, onPick, onClose }: Props) {
   const [query, setQuery] = useState('');
+  // Default sort to DPS-desc when we have a target — that's almost always
+  // what the user is trying to do ("show me upgrades"). Falls back to the
+  // fuzzysort score when typing a query (so "ber" still surfaces Berserker
+  // ring at the top even if it's not the highest-DPS option).
+  const [sortByDps, setSortByDps] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Autofocus the search input on open and let Esc close the modal.
@@ -58,6 +73,53 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, o
     return hits.map((h) => h.obj);
   }, [candidates, query]);
 
+  // Baseline DPS — what the loadout currently produces against the target.
+  // Null when no monster is selected (delta column is hidden in that case).
+  const baselineDps = useMemo(() => {
+    if (!target) return null;
+    return calcDps(loadout, target).dps;
+  }, [loadout, target]);
+
+  /**
+   * Per-candidate DPS computed by substituting the candidate into `slot` and
+   * running calcDps once. Map keyed by `${id}-${version}` so two variants of
+   * the same item don't collide.
+   *
+   * Cost: O(results.length) calcDps calls per modal render. Each calcDps is
+   * cheap straight-line math (no shortlist iteration), and results is capped
+   * at 200, so this runs comfortably under a frame budget. Memoized over
+   * (results, loadout, target) so typing in the search box doesn't trigger
+   * a recompute for already-evaluated rows.
+   */
+  const dpsByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!target) return map;
+    for (const p of results) {
+      const nextEquipment = { ...loadout.equipment };
+      nextEquipment[slot] = p;
+      // Mirror the 2h⇆shield mutual exclusion enforced by store.setSlot and
+      // App.pickSlot, so the picker's preview matches what the user will
+      // actually get when they click.
+      if (slot === 'weapon' && p.isTwoHanded) nextEquipment.shield = null;
+      else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
+      const r = calcDps({ ...loadout, equipment: nextEquipment }, target);
+      map.set(`${p.id}-${p.version}`, r.dps);
+    }
+    return map;
+  }, [results, loadout, target, slot]);
+
+  // Apply the DPS sort on top of the fuzzysort/array-order results. We sort
+  // in a separate memo so the dpsByKey computation isn't repeated when the
+  // user just toggles the sort.
+  const sortedResults = useMemo(() => {
+    if (!sortByDps || !target) return results;
+    return [...results].sort((a, b) => {
+      const da = dpsByKey.get(`${a.id}-${a.version}`) ?? -Infinity;
+      const db = dpsByKey.get(`${b.id}-${b.version}`) ?? -Infinity;
+      return db - da;
+    });
+  }, [results, dpsByKey, sortByDps, target]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -82,17 +144,30 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, o
           />
           <div className="flex items-center justify-between text-xs text-text-faint">
             <span>{results.length} of {candidates.length}{ownedOnly ? ' owned' : ''}</span>
-            {current && (
-              <button
-                onClick={() => { onPick(null); onClose(); }}
-                className="hover:text-red-400"
-              >
-                Unequip current
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {target && (
+                <label className="flex items-center gap-1.5 cursor-pointer hover:text-text">
+                  <input
+                    type="checkbox"
+                    checked={sortByDps}
+                    onChange={(e) => setSortByDps(e.target.checked)}
+                    className="accent-accent"
+                  />
+                  Sort by DPS
+                </label>
+              )}
+              {current && (
+                <button
+                  onClick={() => { onPick(null); onClose(); }}
+                  className="hover:text-red-400"
+                >
+                  Unequip current
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex-1 overflow-auto rounded border border-border">
-            {results.length === 0 ? (
+            {sortedResults.length === 0 ? (
               <div className="p-6 text-center text-sm text-text-faint">
                 {ownedOnly && candidates.length === 0
                   ? 'No owned items in this slot. Add some via the Owned-only filter.'
@@ -100,8 +175,10 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, o
               </div>
             ) : (
               <div className="divide-y divide-border">
-                {results.map((p) => {
+                {sortedResults.map((p) => {
                   const isCurrent = current?.id === p.id;
+                  const dps = dpsByKey.get(`${p.id}-${p.version}`);
+                  const delta = dps !== undefined && baselineDps !== null ? dps - baselineDps : null;
                   return (
                     <button
                       key={`${p.id}-${p.version}`}
@@ -121,6 +198,12 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, o
                           {summarizeStats(p)}
                         </span>
                       </span>
+                      {dps !== undefined && delta !== null && (
+                        <span className="flex flex-col items-end shrink-0 tabular-nums">
+                          <span className="text-xs text-text-dim">{dps.toFixed(2)} dps</span>
+                          <DeltaPill delta={delta} />
+                        </span>
+                      )}
                       {isCurrent && <span className="text-[11px] uppercase tracking-wider">Equipped</span>}
                     </button>
                   );
@@ -131,6 +214,28 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, onPick, o
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Tiny color-coded chip for the per-row DPS delta. Green for upgrades, red
+ * for downgrades, faint zero for "no change". Threshold of 0.005 dps (well
+ * under any meaningful difference) collapses floating-point noise into "0.00".
+ */
+function DeltaPill({ delta }: { delta: number }) {
+  if (Math.abs(delta) < 0.005) {
+    return <span className="text-[11px] text-text-faint">±0.00</span>;
+  }
+  const positive = delta > 0;
+  return (
+    <span
+      className={[
+        'text-[11px] font-medium',
+        positive ? 'text-emerald-400' : 'text-red-400',
+      ].join(' ')}
+    >
+      {positive ? '+' : ''}{delta.toFixed(2)}
+    </span>
   );
 }
 
