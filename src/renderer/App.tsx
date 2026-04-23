@@ -224,6 +224,7 @@ export default function App() {
             />
             <ResultsPanel
               candidate={candidate}
+              loadout={state.loadout}
               target={selectedMonster}
               computing={computing}
               onSlotClick={(slot) => setPickerSlot(slot)}
