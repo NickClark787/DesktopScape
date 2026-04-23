@@ -1,12 +1,23 @@
 import { useMemo, useState } from 'react';
+import type { EquipmentPiece, EquipmentSlot } from '@shared/types';
 import type { LoadoutSnapshot } from '../state/store';
+import { GearIcon } from './GearIcon';
 
 interface Props {
+  /** Live equipment list, used to resolve snapshot.equipmentIds → pieces for the preview strip. */
+  equipment: EquipmentPiece[];
   saved: Record<string, LoadoutSnapshot>;
   onSave: (name: string) => void;
   onLoad: (name: string) => void;
   onDelete: (name: string) => void;
 }
+
+// Order used for the gear-strip preview. Weapon first because it's the most
+// identifiable "this is the loadout" cue; main armor next; accessories last.
+// Mirrors the visual hierarchy a player uses to recognize their own setups.
+const STRIP_ORDER: ReadonlyArray<Exclude<EquipmentSlot, '2h'>> = [
+  'weapon', 'head', 'body', 'legs', 'shield', 'cape', 'neck', 'hands', 'feet', 'ammo', 'ring',
+];
 
 function fmtAge(ts: number): string {
   const ageMs = Date.now() - ts;
@@ -19,7 +30,7 @@ function fmtAge(ts: number): string {
   return `${d}d ago`;
 }
 
-export function LoadoutManagerPanel({ saved, onSave, onLoad, onDelete }: Props) {
+export function LoadoutManagerPanel({ equipment, saved, onSave, onLoad, onDelete }: Props) {
   const [name, setName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -27,6 +38,15 @@ export function LoadoutManagerPanel({ saved, onSave, onLoad, onDelete }: Props) 
     () => Object.entries(saved).sort((a, b) => b[1].savedAt - a[1].savedAt),
     [saved],
   );
+
+  // Build a single ID→piece map and reuse for every preview row, instead of
+  // O(n) scanning the equipment list per row × per slot. With ~3000 equipment
+  // pieces, the saved-loadout list re-renders cheaply.
+  const byId = useMemo(() => {
+    const m = new Map<number, EquipmentPiece>();
+    for (const p of equipment) m.set(p.id, p);
+    return m;
+  }, [equipment]);
 
   function handleSave() {
     const trimmed = name.trim();
@@ -69,47 +89,62 @@ export function LoadoutManagerPanel({ saved, onSave, onLoad, onDelete }: Props) 
             {entries.map(([key, snap]) => {
               const isConfirming = confirmDelete === key;
               const slotCount = Object.keys(snap.loadout.equipmentIds).length;
+              // Resolve snapshot IDs to live pieces. Items removed from upstream
+              // data will silently drop out of the strip — same fault-tolerance
+              // as the load action itself.
+              const stripPieces = STRIP_ORDER
+                .map((slot) => byId.get(snap.loadout.equipmentIds[slot] ?? -1))
+                .filter((p): p is EquipmentPiece => !!p);
               return (
                 <div
                   key={key}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded bg-bg-raised border border-border"
+                  className="flex flex-col gap-1.5 px-2 py-1.5 rounded bg-bg-raised border border-border"
                 >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm truncate" title={key}>{key}</div>
-                    <div className="text-[11px] text-text-faint">
-                      {snap.style} · {slotCount} slot{slotCount === 1 ? '' : 's'} · {fmtAge(snap.savedAt)}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate" title={key}>{key}</div>
+                      <div className="text-[11px] text-text-faint">
+                        {snap.style} · {slotCount} slot{slotCount === 1 ? '' : 's'} · {fmtAge(snap.savedAt)}
+                      </div>
                     </div>
-                  </div>
-                  <button
-                    onClick={() => onLoad(key)}
-                    className="btn text-xs"
-                    title="Replace current state with this loadout"
-                  >
-                    Load
-                  </button>
-                  {isConfirming ? (
-                    <>
-                      <button
-                        onClick={() => { onDelete(key); setConfirmDelete(null); }}
-                        className="btn text-xs text-red-400 border-red-400/40 hover:bg-red-400/10"
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        onClick={() => setConfirmDelete(null)}
-                        className="btn text-xs"
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
                     <button
-                      onClick={() => setConfirmDelete(key)}
-                      className="btn text-xs hover:text-red-400"
-                      title="Delete"
+                      onClick={() => onLoad(key)}
+                      className="btn text-xs"
+                      title="Replace current state with this loadout"
                     >
-                      ×
+                      Load
                     </button>
+                    {isConfirming ? (
+                      <>
+                        <button
+                          onClick={() => { onDelete(key); setConfirmDelete(null); }}
+                          className="btn text-xs text-red-400 border-red-400/40 hover:bg-red-400/10"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="btn text-xs"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(key)}
+                        className="btn text-xs hover:text-red-400"
+                        title="Delete"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  {stripPieces.length > 0 && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {stripPieces.map((p) => (
+                        <GearIcon key={`${p.slot}-${p.id}`} piece={p} size="xs" />
+                      ))}
+                    </div>
                   )}
                 </div>
               );

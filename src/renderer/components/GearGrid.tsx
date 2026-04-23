@@ -1,4 +1,5 @@
 import type { EquipmentPiece, EquipmentSlot, PlayerLoadout } from '@shared/types';
+import { GearIcon } from './GearIcon';
 
 type Slot = Exclude<EquipmentSlot, '2h'>;
 
@@ -25,13 +26,7 @@ function Cell({ slot, piece }: { slot: Slot | null; piece: EquipmentPiece | null
   return (
     <div className="slot-cell group" title={piece ? piece.name : SLOT_LABEL[slot]}>
       {piece ? (
-        <img
-          src={window.gearscape.cdnImage(piece.image)}
-          alt={piece.name}
-          className="w-full h-full object-contain p-1"
-          style={{ imageRendering: 'pixelated' }}
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-        />
+        <GearIcon piece={piece} size="lg" />
       ) : (
         <span className="text-text-faint text-[11px] uppercase tracking-wide">{SLOT_LABEL[slot]}</span>
       )}

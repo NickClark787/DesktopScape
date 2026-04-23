@@ -133,6 +133,7 @@ export default function App() {
               onToggleEnabled={state.setOwnedFilterEnabled}
             />
             <LoadoutManagerPanel
+              equipment={state.equipment}
               saved={state.savedLoadouts}
               onSave={state.saveLoadout}
               onLoad={state.loadLoadout}

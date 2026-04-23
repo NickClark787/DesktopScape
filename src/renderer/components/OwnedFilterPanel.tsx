@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import fuzzysort from 'fuzzysort';
 import type { EquipmentPiece } from '@shared/types';
+import { GearIcon } from './GearIcon';
 
 interface Props {
   equipment: EquipmentPiece[];
@@ -83,6 +84,7 @@ export function OwnedFilterPanel({
                     className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-bg-raised"
                   >
                     <span className="text-accent">+</span>
+                    <GearIcon piece={p} size="sm" />
                     <span className="flex-1 truncate">
                       {p.name}
                       {p.version && <span className="text-text-faint"> · {p.version}</span>}
@@ -104,9 +106,10 @@ export function OwnedFilterPanel({
                     <button
                       key={`${p.id}-${p.version}`}
                       onClick={() => onRemove(p.id)}
-                      title="Remove"
+                      title={`Remove ${p.name}${p.version ? ` (${p.version})` : ''}`}
                       className="text-xs px-2 py-1 rounded bg-bg-raised border border-border hover:border-accent hover:text-accent flex items-center gap-1.5"
                     >
+                      <GearIcon piece={p} size="xs" />
                       <span>{p.name}{p.version ? ` (${p.version})` : ''}</span>
                       <span className="text-text-faint">×</span>
                     </button>
