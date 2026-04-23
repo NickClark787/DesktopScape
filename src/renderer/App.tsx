@@ -12,8 +12,10 @@ import { OverridesPanel } from './components/OverridesPanel';
 import { OwnedFilterPanel } from './components/OwnedFilterPanel';
 import { LoadoutManagerPanel } from './components/LoadoutManagerPanel';
 import { DataStalenessBadge } from './components/DataStalenessBadge';
+import { GearPickerModal } from './components/GearPickerModal';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
-import type { BestSetupCandidate } from '@shared/types';
+import { calcDps } from '../engine/formulas';
+import type { BestSetupCandidate, EquipmentPiece, EquipmentSlot } from '@shared/types';
 import type { DataMeta } from '../preload';
 
 export default function App() {
@@ -22,6 +24,7 @@ export default function App() {
   const [computing, setComputing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string>('');
+  const [pickerSlot, setPickerSlot] = useState<Exclude<EquipmentSlot, '2h'> | null>(null);
 
   // Load data on mount
   useEffect(() => {
@@ -66,6 +69,42 @@ export default function App() {
     }
     setCandidate(result);
     setComputing(false);
+  }
+
+  /**
+   * Apply a manual slot swap and re-derive the displayed candidate so DPS,
+   * accuracy, and the effects list stay in sync with what's actually equipped.
+   * Falls back to clearing the candidate when the user can't be evaluated yet
+   * (no monster picked) — the gear edit still goes through.
+   */
+  function pickSlot(slot: Exclude<EquipmentSlot, '2h'>, piece: EquipmentPiece | null) {
+    state.setSlot(slot, piece);
+    if (!selectedMonster) return;
+    // Build the next equipment locally — store updates haven't flushed yet.
+    const nextEquipment = { ...state.loadout.equipment };
+    if (piece === null) {
+      nextEquipment[slot] = null;
+    } else {
+      nextEquipment[slot] = piece;
+      if (slot === 'weapon' && piece.isTwoHanded) nextEquipment.shield = null;
+      else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
+    }
+    const nextLoadout = {
+      ...state.loadout,
+      style: state.style,
+      attackStyle: candidate?.attackStyle ?? state.loadout.attackStyle,
+      stance: candidate?.stance ?? state.loadout.stance,
+      equipment: nextEquipment,
+    };
+    const result = calcDps(nextLoadout, selectedMonster);
+    setCandidate({
+      equipment: nextEquipment,
+      result,
+      style: state.style,
+      attackStyle: nextLoadout.attackStyle,
+      spell: state.style === 'magic' ? state.loadout.spell : undefined,
+      stance: nextLoadout.stance,
+    });
   }
 
   async function refreshData() {
@@ -165,10 +204,25 @@ export default function App() {
               onStanceChange={state.setStanceOverride}
               onAttackStyleChange={state.setAttackStyleOverride}
             />
-            <ResultsPanel candidate={candidate} target={selectedMonster} computing={computing} />
+            <ResultsPanel
+              candidate={candidate}
+              target={selectedMonster}
+              computing={computing}
+              onSlotClick={(slot) => setPickerSlot(slot)}
+            />
           </main>
         </div>
       </div>
+      {pickerSlot && (
+        <GearPickerModal
+          slot={pickerSlot}
+          equipment={state.equipment}
+          current={state.loadout.equipment[pickerSlot] ?? null}
+          ownedOnly={state.ownedFilterEnabled ? state.ownedIds : null}
+          onPick={(piece) => pickSlot(pickerSlot, piece)}
+          onClose={() => setPickerSlot(null)}
+        />
+      )}
     </div>
   );
 }

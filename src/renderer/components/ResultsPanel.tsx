@@ -1,4 +1,4 @@
-import type { BestSetupCandidate, Monster } from '@shared/types';
+import type { BestSetupCandidate, EquipmentSlot, Monster } from '@shared/types';
 import { GearGrid } from './GearGrid';
 import { GearIcon } from './GearIcon';
 import { MonsterIcon } from './MonsterIcon';
@@ -9,6 +9,8 @@ interface Props {
    *  the user always sees *what* the recommended setup is for. */
   target: Monster | null;
   computing: boolean;
+  /** When provided, gear-grid cells become clickable to open the picker. */
+  onSlotClick?: (slot: Exclude<EquipmentSlot, '2h'>) => void;
 }
 
 function fmt(n: number, digits = 2) {
@@ -16,7 +18,7 @@ function fmt(n: number, digits = 2) {
   return n.toFixed(digits);
 }
 
-export function ResultsPanel({ candidate, target, computing }: Props) {
+export function ResultsPanel({ candidate, target, computing, onSlotClick }: Props) {
   if (computing) {
     return (
       <div className="panel flex-1 flex items-center justify-center p-12">
@@ -57,7 +59,7 @@ export function ResultsPanel({ candidate, target, computing }: Props) {
         </div>
       )}
       <div className="p-5 grid grid-cols-[auto_1fr] gap-6">
-        <GearGrid equipment={equipment} />
+        <GearGrid equipment={equipment} onSlotClick={onSlotClick} />
         <div className="flex flex-col gap-4">
           <div className="grid grid-cols-4 gap-3">
             <Metric label="DPS" value={fmt(result.dps, 3)} primary />

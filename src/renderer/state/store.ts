@@ -119,6 +119,12 @@ export interface AppState {
   setRaidScaling: (v: RaidScaling | undefined) => void;
   hydrate: (data: { equipment: EquipmentPiece[]; monsters: Monster[]; meta?: DataMeta }) => void;
   setEquipment: (eq: PlayerLoadout['equipment']) => void;
+  /**
+   * Per-slot manual override. Pass `null` to unequip. Handles the 2h⇆shield
+   * mutual exclusion automatically: equipping a 2h weapon clears the shield;
+   * equipping a shield over a 2h weapon clears the weapon.
+   */
+  setSlot: (slot: Exclude<EquipmentSlot, '2h'>, piece: EquipmentPiece | null) => void;
 }
 
 export const useApp = create<AppState>((set) => ({
@@ -250,4 +256,17 @@ export const useApp = create<AppState>((set) => ({
   setRaidScaling: (v) => set((st) => ({ loadout: { ...st.loadout, raidScaling: v } })),
   hydrate: ({ equipment, monsters, meta }) => set({ equipment, monsters, loading: false, dataMeta: meta ?? null }),
   setEquipment: (eq) => set((st) => ({ loadout: { ...st.loadout, equipment: eq } })),
+  setSlot: (slot, piece) => set((st) => {
+    const next = { ...st.loadout.equipment };
+    if (piece === null) {
+      next[slot] = null;
+    } else {
+      next[slot] = piece;
+      // 2h⇆shield mutual exclusion. Mirrors the optimizer's loadout assembly so
+      // the manual picker can't produce a state the engine would never propose.
+      if (slot === 'weapon' && piece.isTwoHanded) next.shield = null;
+      else if (slot === 'shield' && next.weapon?.isTwoHanded) next.weapon = null;
+    }
+    return { loadout: { ...st.loadout, equipment: next } };
+  }),
 }));
