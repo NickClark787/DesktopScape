@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, net, shell } from 'electron';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { IPC, CDN_JSON } from '../shared/constants';
 
@@ -29,6 +29,27 @@ async function readDataFile(file: string): Promise<string> {
     try { return await readFile(cached, 'utf8'); } catch { /* fallthrough */ }
   }
   return await readFile(bundledDataPath(file), 'utf8');
+}
+
+/**
+ * Stat the data file actually being served (cached CDN copy preferred,
+ * bundled fallback). Returns the file's last-modified time and which
+ * source it came from. Used by the renderer to surface a staleness chip
+ * next to the refresh button. Returns 0/'bundled' on stat failure rather
+ * than throwing — staleness display is purely cosmetic.
+ */
+async function dataFileMeta(file: string): Promise<{ refreshedAt: number; source: 'cdn' | 'bundled' }> {
+  const cached = join(dataDir(), 'osrs-data', file);
+  try {
+    if (existsSync(cached)) {
+      const s = await stat(cached);
+      return { refreshedAt: s.mtimeMs, source: 'cdn' };
+    }
+    const s = await stat(bundledDataPath(file));
+    return { refreshedAt: s.mtimeMs, source: 'bundled' };
+  } catch {
+    return { refreshedAt: 0, source: 'bundled' };
+  }
 }
 
 async function cacheDataFile(file: string, contents: string): Promise<void> {
@@ -76,15 +97,19 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ipcMain.handle(IPC.loadData, async () => {
-    const [equipment, monsters, spells] = await Promise.all([
+    const [equipment, monsters, spells, meta] = await Promise.all([
       readDataFile('equipment.json'),
       readDataFile('monsters.json'),
       readDataFile('spells.json'),
+      // Equipment is the most actively-updated file; use its mtime as the
+      // canonical "data refreshed" timestamp.
+      dataFileMeta('equipment.json'),
     ]);
     return {
       equipment: JSON.parse(equipment),
       monsters: JSON.parse(monsters),
       spells: JSON.parse(spells),
+      meta,
     };
   });
 

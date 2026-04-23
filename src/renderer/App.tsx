@@ -7,8 +7,14 @@ import { PrayerPanel } from './components/PrayerPanel';
 import { PotionPanel } from './components/PotionPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import { SpellPicker } from './components/SpellPicker';
+import { RaidPanel } from './components/RaidPanel';
+import { OverridesPanel } from './components/OverridesPanel';
+import { OwnedFilterPanel } from './components/OwnedFilterPanel';
+import { LoadoutManagerPanel } from './components/LoadoutManagerPanel';
+import { DataStalenessBadge } from './components/DataStalenessBadge';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import type { BestSetupCandidate } from '@shared/types';
+import type { DataMeta } from '../preload';
 
 export default function App() {
   const state = useApp();
@@ -21,7 +27,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       const data = await window.gearscape.loadData();
-      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never });
+      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never, meta: data.meta });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -37,15 +43,22 @@ export default function App() {
     setCandidate(null);
     // Yield to the paint before running the sync search.
     await new Promise((r) => requestAnimationFrame(() => r(null)));
+    const forceStance = state.stanceOverride ?? undefined;
+    const ownedOnly = state.ownedFilterEnabled ? state.ownedIds : null;
     const result = state.style === 'melee'
-      ? findBestMeleeSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5 })
+      ? findBestMeleeSetup(state.loadout, selectedMonster, state.equipment, {
+          shortlistPerSlot: 5,
+          forceStance,
+          ownedOnly,
+          forceAttackStyle: state.attackStyleOverride ?? undefined,
+        })
       : state.style === 'magic'
-      ? findBestMagicSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5 })
+      ? findBestMagicSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5, forceStance, ownedOnly })
       : findBestSetup(
           { ...state.loadout, style: state.style, attackStyle: state.style },
           selectedMonster,
           state.equipment,
-          { style: state.style, attackStyle: state.style, shortlistPerSlot: 5 },
+          { style: state.style, attackStyle: state.style, shortlistPerSlot: 5, forceStance, ownedOnly },
         );
     if (result) {
       state.setEquipment(result.equipment);
@@ -61,7 +74,7 @@ export default function App() {
     try {
       await window.gearscape.refreshData();
       const data = await window.gearscape.loadData();
-      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never });
+      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never, meta: data.meta });
       setNotice('Data refreshed from OSRS Wiki CDN.');
     } catch (e) {
       setNotice(`Refresh failed: ${(e as Error).message}`);
@@ -88,6 +101,7 @@ export default function App() {
         refreshing={refreshing}
         onRefresh={refreshData}
         notice={notice}
+        dataMeta={state.dataMeta}
       />
       <div className="flex-1 overflow-auto">
         <div className="p-5 grid gap-5 grid-cols-[340px_1fr]">
@@ -97,6 +111,10 @@ export default function App() {
               selectedId={state.selectedMonsterId}
               onSelect={state.setMonster}
             />
+            <RaidPanel
+              value={state.loadout.raidScaling}
+              onChange={state.setRaidScaling}
+            />
             <StatsPanel
               skills={state.loadout.skills}
               onChange={state.setSkill}
@@ -104,6 +122,21 @@ export default function App() {
               inWilderness={state.loadout.inWilderness}
               onSlayerChange={state.setOnSlayerTask}
               onWildernessChange={state.setInWilderness}
+            />
+            <OwnedFilterPanel
+              equipment={state.equipment}
+              ownedIds={state.ownedIds}
+              enabled={state.ownedFilterEnabled}
+              onAdd={state.addOwned}
+              onRemove={state.removeOwned}
+              onClear={state.clearOwned}
+              onToggleEnabled={state.setOwnedFilterEnabled}
+            />
+            <LoadoutManagerPanel
+              saved={state.savedLoadouts}
+              onSave={state.saveLoadout}
+              onLoad={state.loadLoadout}
+              onDelete={state.deleteLoadout}
             />
           </aside>
           <main className="flex flex-col gap-4 min-w-0">
@@ -124,6 +157,13 @@ export default function App() {
             {state.style === 'magic' && (
               <SpellPicker value={state.loadout.spell} onChange={state.setSpell} />
             )}
+            <OverridesPanel
+              style={state.style}
+              stance={state.stanceOverride}
+              attackStyle={state.attackStyleOverride}
+              onStanceChange={state.setStanceOverride}
+              onAttackStyleChange={state.setAttackStyleOverride}
+            />
             <ResultsPanel candidate={candidate} computing={computing} />
           </main>
         </div>
@@ -132,7 +172,17 @@ export default function App() {
   );
 }
 
-function Header({ refreshing, onRefresh, notice }: { refreshing: boolean; onRefresh: () => void; notice: string }) {
+function Header({
+  refreshing,
+  onRefresh,
+  notice,
+  dataMeta,
+}: {
+  refreshing: boolean;
+  onRefresh: () => void;
+  notice: string;
+  dataMeta: DataMeta | null;
+}) {
   return (
     <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-bg-soft">
       <div className="flex items-baseline gap-3">
@@ -143,6 +193,7 @@ function Header({ refreshing, onRefresh, notice }: { refreshing: boolean; onRefr
       </div>
       <div className="flex items-center gap-3">
         {notice && <span className="text-xs text-text-dim">{notice}</span>}
+        <DataStalenessBadge meta={dataMeta} />
         <button className="btn" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? 'Refreshing…' : 'Refresh data'}
         </button>

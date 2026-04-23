@@ -9,8 +9,8 @@
  * swing" value given a precomputed base (single-hit) maxHit and accuracy.
  */
 
-import type { CombatStyle, EquipmentPiece, Monster, PlayerLoadout } from '@shared/types';
-import type { Spell } from './spells';
+import type { CombatStyle, EquipmentPiece, Monster, PlayerLoadout, RaidScaling } from '@shared/types';
+import { ancientSpellElement, isBoltSpell, type Spell } from './spells';
 
 const SCYTHE_NAMES = new Set([
   'Scythe of vitur',
@@ -43,6 +43,19 @@ function isCrossbow(weapon: EquipmentPiece | null): boolean {
   return !!weapon && /crossbow/i.test(weapon.category);
 }
 
+/**
+ * Zaryte crossbow enhances enchanted-bolt effects by ~10%. Per wiki:
+ *   - Ruby: dmg of current HP 20% → 22%, cap 100 → 110
+ *   - Diamond: max hit mult 1.15 → 1.26
+ *   - Onyx: max hit mult 1.20 → 1.32
+ *   - Dragonstone: max hit mult 1.20 → 1.32
+ * (Jade/red topaz/sapphire don't benefit due to rounding — we don't model those.)
+ * Wiki: https://oldschool.runescape.wiki/w/Zaryte_crossbow
+ */
+function isZcb(weapon: EquipmentPiece | null): boolean {
+  return !!weapon && /^Zaryte crossbow$/i.test(weapon.name);
+}
+
 const RUBY_BOLTS_RE = /^Ruby (dragon )?bolts(?: \(e\))?$/i;
 const DIAMOND_BOLTS_RE = /^Diamond (dragon )?bolts(?: \(e\))?$/i;
 const ONYX_BOLTS_RE = /^Onyx (dragon )?bolts(?: \(e\))?$/i;
@@ -66,32 +79,42 @@ export function boltProcAvgPerSwing(
 
   const normalAvg = accuracy * (maxHit / 2);
   const targetHp = monster.skills.hp || 1;
+  const zcb = isZcb(weapon);
 
   // Ruby (e) — Blood Forfeit: 6% proc, deals 20% of target current HP, cap 100.
+  // ZCB: 22% / cap 110.
   if (RUBY_BOLTS_RE.test(ammo.name)) {
-    const procDmg = Math.min(100, Math.floor(targetHp * 0.20));
+    const dmgPct = zcb ? 0.22 : 0.20;
+    const cap = zcb ? 110 : 100;
+    const procDmg = Math.min(cap, Math.floor(targetHp * dmgPct));
     return 0.94 * normalAvg + 0.06 * procDmg;
   }
 
   // Diamond (e) — Armour Piercing: 10% proc, bypasses defense (100% acc) and +15% max hit.
+  // ZCB: max hit mult 1.26.
   if (DIAMOND_BOLTS_RE.test(ammo.name)) {
-    const procMax = Math.trunc(maxHit * 1.15);
+    const mult = zcb ? 1.26 : 1.15;
+    const procMax = Math.trunc(maxHit * mult);
     const procAvg = procMax / 2; // guaranteed to land
     return 0.90 * normalAvg + 0.10 * procAvg;
   }
 
   // Onyx (e) — Life Leech: 10% proc, +20% max hit; lifesteal doesn't change damage dealt.
+  // ZCB: max hit mult 1.32.
   if (ONYX_BOLTS_RE.test(ammo.name)) {
-    const procMax = Math.trunc(maxHit * 1.20);
+    const mult = zcb ? 1.32 : 1.20;
+    const procMax = Math.trunc(maxHit * mult);
     const procAvg = accuracy * (procMax / 2);
     return 0.90 * normalAvg + 0.10 * procAvg;
   }
 
   // Dragonstone (e) — Dragon's Breath: 6% proc, +20% max hit. Ineffective vs dragons/fire-immune.
+  // ZCB: max hit mult 1.32.
   if (DRAGONSTONE_BOLTS_RE.test(ammo.name)) {
     const attrs = (monster.attributes || []).map((a) => a.toLowerCase());
     if (attrs.includes('dragon') || attrs.includes('fiery')) return normalAvg;
-    const procMax = Math.trunc(maxHit * 1.20);
+    const mult = zcb ? 1.32 : 1.20;
+    const procMax = Math.trunc(maxHit * mult);
     const procAvg = accuracy * (procMax / 2);
     return 0.94 * normalAvg + 0.06 * procAvg;
   }
@@ -108,6 +131,47 @@ export function isDualMacuahuitl(weapon: EquipmentPiece | null | undefined): boo
 }
 
 /**
+ * Blood Moon set effect (Perilous Moons): with full set + Dual macuahuitl,
+ * each landed hit has a 33% chance to make the next swing arrive 1 tick early.
+ * Macuahuitl swings hit twice (sharing one accuracy roll), so the swing-level
+ * proc chance is 1 - (2/3)^2 = 5/9 ≈ 55.56%, *conditional on the swing landing*.
+ *
+ * Average speed reduction in ticks per swing = accuracy × 5/9.
+ *
+ * Returns 0 when the set isn't equipped or the weapon isn't Macuahuitl.
+ * Wiki: https://oldschool.runescape.wiki/w/Blood_moon_armour
+ */
+const BLOOD_MOON_PROC = 5 / 9;
+
+function isBloodMoonPiece(piece: EquipmentPiece | null | undefined, slotName: string): boolean {
+  if (!piece) return false;
+  const want = `Blood moon ${slotName}`.toLowerCase();
+  return piece.name.toLowerCase() === want;
+}
+
+export function isFullBloodMoonSet(eq: {
+  head?: EquipmentPiece | null;
+  body?: EquipmentPiece | null;
+  legs?: EquipmentPiece | null;
+}): boolean {
+  return (
+    isBloodMoonPiece(eq.head, 'helm') &&
+    isBloodMoonPiece(eq.body, 'chestplate') &&
+    isBloodMoonPiece(eq.legs, 'tassets')
+  );
+}
+
+export function bloodMoonSpeedReduction(
+  weapon: EquipmentPiece | null,
+  accuracy: number,
+  eq: { head?: EquipmentPiece | null; body?: EquipmentPiece | null; legs?: EquipmentPiece | null },
+): number {
+  if (!isDualMacuahuitl(weapon)) return 0;
+  if (!isFullBloodMoonSet(eq)) return 0;
+  return accuracy * BLOOD_MOON_PROC;
+}
+
+/**
  * Dual macuahuitl (Blood Moon weapon) hits twice per swing, sharing a single
  * accuracy roll. Each hit rolls damage uniformly in [0, max/2], so the
  * expected damage on a successful swing is `2 * max/4 = max/2` — effectively
@@ -116,6 +180,75 @@ export function isDualMacuahuitl(weapon: EquipmentPiece | null | undefined): boo
  */
 export function dualMacuahuitlAvgPerSwing(maxHit: number, accuracy: number): number {
   return accuracy * (maxHit / 2) * 2;
+}
+
+/**
+ * Eclipse Moon set effect (Perilous Moons): with full set + Eclipse atlatl,
+ * each landed hit has a 20% chance to inflict a burn dealing 10 damage over
+ * 40 ticks (24s), capped at 5 simultaneous stacks per target.
+ *
+ * Steady-state stack count = procRate × burnDurationTicks / swingTicks
+ *   = 0.20 × 40 / swingTicks = 8 / swingTicks (at acc=1)
+ * Atlatl swings every 4t accurate / 3t rapid → max steady-state ≈ 2–2.67
+ * stacks, well under the 5 cap. So in practice the cap never binds and the
+ * model simplifies to:
+ *
+ *   avg burn damage per swing = accuracy × 0.20 × 10 = 2 × accuracy
+ *
+ * This is an additive damage contribution (burn ticks resolve independently
+ * of the swing's own hit roll), so we add it to `avgHit` rather than scaling.
+ * Wiki: https://oldschool.runescape.wiki/w/Eclipse_moon_armour
+ */
+const ECLIPSE_BURN_PROC = 0.20;
+const ECLIPSE_BURN_TOTAL_DMG = 10;
+
+export function isEclipseAtlatl(weapon: EquipmentPiece | null | undefined): boolean {
+  return !!weapon && weapon.name === 'Eclipse atlatl';
+}
+
+function isEclipsePiece(piece: EquipmentPiece | null | undefined, slotName: string): boolean {
+  if (!piece) return false;
+  const want = `Eclipse moon ${slotName}`.toLowerCase();
+  return piece.name.toLowerCase() === want;
+}
+
+export function isFullEclipseMoonSet(eq: {
+  head?: EquipmentPiece | null;
+  body?: EquipmentPiece | null;
+  legs?: EquipmentPiece | null;
+}): boolean {
+  return (
+    isEclipsePiece(eq.head, 'helm') &&
+    isEclipsePiece(eq.body, 'chestplate') &&
+    isEclipsePiece(eq.legs, 'tassets')
+  );
+}
+
+export function eclipseMoonBurnAvgPerSwing(
+  weapon: EquipmentPiece | null,
+  accuracy: number,
+  eq: { head?: EquipmentPiece | null; body?: EquipmentPiece | null; legs?: EquipmentPiece | null },
+): number {
+  if (!isEclipseAtlatl(weapon)) return 0;
+  if (!isFullEclipseMoonSet(eq)) return 0;
+  return accuracy * ECLIPSE_BURN_PROC * ECLIPSE_BURN_TOTAL_DMG;
+}
+
+/**
+ * Name of the enchanted bolt proc that would fire for this weapon+ammo combo,
+ * or null if none applies. Used by the effects-fired UI panel.
+ */
+export function boltProcName(
+  weapon: EquipmentPiece | null,
+  ammo: EquipmentPiece | null,
+): string | null {
+  if (!isCrossbow(weapon) || !ammo || !ENCHANTED_RE.test(ammo.name)) return null;
+  const suffix = isZcb(weapon) ? ' (ZCB +10%)' : '';
+  if (RUBY_BOLTS_RE.test(ammo.name)) return `Ruby bolt proc${suffix}`;
+  if (DIAMOND_BOLTS_RE.test(ammo.name)) return `Diamond bolt proc${suffix}`;
+  if (ONYX_BOLTS_RE.test(ammo.name)) return `Onyx bolt proc${suffix}`;
+  if (DRAGONSTONE_BOLTS_RE.test(ammo.name)) return `Dragonstone bolt proc${suffix}`;
+  return null;
 }
 
 export function specialAvgPerSwing(
@@ -184,8 +317,30 @@ export function magicWeaponMult(
   if (spell.name === 'Flames of Zamorak' && /staff of (the dead|light)/i.test(weapon.name)) {
     return { dmgMult: 1.15, accMult: 1 };
   }
+  // Ancient sceptre variants (Smoke / Shadow / Blood / Ice) — +10% dmg & acc
+  // on matching-element ancient spells. Plain Ancient sceptre gives no spell
+  // bonus (its perk is the ancient-spellbook autocast slot, which we don't
+  // model since the spell selector already pins the cast).
+  const element = ancientSpellElement(spell);
+  if (element) {
+    const expected = `${element[0].toUpperCase()}${element.slice(1)} ancient sceptre`;
+    if (weapon.name === expected) return { dmgMult: 1.10, accMult: 1.10 };
+  }
 
   return MAGIC_MULT_IDENTITY;
+}
+
+/**
+ * Chaos gauntlets add a flat +3 to max hit on Bolt-class standard spells
+ * (Wind/Water/Earth/Fire Bolt). Returns the additive bonus to apply to
+ * `maxHit` in the magic branch — 0 when not applicable.
+ */
+export function chaosGauntletsBonus(
+  hands: EquipmentPiece | null | undefined,
+  spell: Spell | null,
+): number {
+  if (!hands || hands.name !== 'Chaos gauntlets') return 0;
+  return isBoltSpell(spell) ? 3 : 0;
 }
 
 // -------------------------------------------------------------------------
@@ -587,6 +742,36 @@ export function kerisBonus(
   const accMult = KERIS_ACC_PARTISAN_RE.test(weapon.name) ? 1.33 : 1;
   const avgDmgMult = 52 / 51;
   return { dmgMult, accMult, avgDmgMult };
+}
+
+/**
+ * Keris partisan of the sun — inside Tombs of Amascut, gains +25% accuracy
+ * vs targets below 25% HP. Applies to ALL targets in ToA (not just
+ * kalphite/scarab — that's a separate Keris-family bonus already handled by
+ * `kerisBonus`). Out-of-ToA the partisan doesn't get this passive.
+ *
+ * The DPS calc has no HP-state notion, so we model the kill-averaged effect:
+ *   - 75% of HP-bar killed at base accuracy A1
+ *   - 25% of HP-bar killed at A2 = min(1, A1 × 1.25)
+ *   - kill time T = 0.75H/(A1·max/2·swing) + 0.25H/(A2·max/2·swing)
+ *   - Effective accuracy A_eff = 1 / (0.75/A1 + 0.25/A2)
+ *
+ * Returns the multiplier `A_eff / A1` to scale `avgHit` by, or 1 when the
+ * effect doesn't apply. When clamping doesn't bind (A1 ≤ 0.8) this gives
+ * a flat ~+5.26% kill-averaged DPS; clamping erodes it as A1 climbs.
+ * Wiki: https://oldschool.runescape.wiki/w/Keris_partisan_of_the_sun
+ */
+export function kerisSunAccBoostMult(
+  weapon: EquipmentPiece | null,
+  raidScaling: RaidScaling | undefined,
+  baseAccuracy: number,
+): number {
+  if (!weapon || weapon.name !== 'Keris partisan of the sun') return 1;
+  if (raidScaling?.kind !== 'toa') return 1;
+  if (baseAccuracy <= 0) return 1;
+  const boosted = Math.min(1, baseAccuracy * 1.25);
+  const aEff = 1 / (0.75 / baseAccuracy + 0.25 / boosted);
+  return aEff / baseAccuracy;
 }
 
 // -------------------------------------------------------------------------

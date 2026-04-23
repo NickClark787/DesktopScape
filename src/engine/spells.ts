@@ -36,7 +36,47 @@ export const CANDIDATE_SPELL_NAMES = [
   'Flames of Zamorak',
 ];
 
-export function getSpellMaxHit(spell: Spell, magicLevel: number): number {
+/**
+ * Bolt-class standard spellbook spell? (Wind/Water/Earth/Fire Bolt). Used by
+ * Chaos gauntlets which add +3 max hit on Bolt spells only.
+ */
+export function isBoltSpell(spell: Spell | null | undefined): boolean {
+  if (!spell || spell.spellbook !== 'standard') return false;
+  return /^(Wind|Water|Earth|Fire) Bolt$/.test(spell.name);
+}
+
+/**
+ * Element prefix of an Ancient-spellbook offensive spell (Smoke/Shadow/Blood/Ice
+ * Rush/Burst/Blitz/Barrage). Returns null for spells outside that family.
+ * Used to match Ancient sceptre variants to matching-element spells.
+ */
+export type AncientElement = 'smoke' | 'shadow' | 'blood' | 'ice';
+export function ancientSpellElement(spell: Spell | null | undefined): AncientElement | null {
+  if (!spell || spell.spellbook !== 'ancient') return null;
+  const m = spell.name.match(/^(Smoke|Shadow|Blood|Ice) (Rush|Burst|Blitz|Barrage)$/);
+  if (!m) return null;
+  return m[1].toLowerCase() as AncientElement;
+}
+
+/**
+ * Magic Dart needs a Slayer's staff to cast and its max hit depends on the
+ * staff variant. Returns 0 if no compatible staff is wielded.
+ *   - Slayer's staff:     max hit = floor(magic / 10) + 10
+ *   - Slayer's staff (e): max hit = floor(magic / 6)  + 13
+ */
+export function magicDartMaxHit(weapon: EquipmentPiece | null | undefined, magicLevel: number): number {
+  const name = weapon?.name ?? '';
+  if (name === "Slayer's staff (e)") return Math.trunc(magicLevel / 6) + 13;
+  if (name === "Slayer's staff") return Math.trunc(magicLevel / 10) + 10;
+  return 0;
+}
+
+export function getSpellMaxHit(
+  spell: Spell,
+  magicLevel: number,
+  weapon?: EquipmentPiece | null,
+): number {
+  if (spell.name === 'Magic Dart') return magicDartMaxHit(weapon, magicLevel);
   if (!spell.element || spell.name === 'Flames of Cerberus') {
     return spell.max_hit;
   }

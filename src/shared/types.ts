@@ -161,6 +161,26 @@ export interface Potions {
   magic: 'none' | 'magic' | 'imbued_heart' | 'saturated_heart' | 'ancient_brew' | 'forgotten_brew' | 'overload';
 }
 
+/** Which raid (if any) the target is being fought in. Drives HP / def-level scaling. */
+export type RaidKind = 'toa' | 'cox' | 'tob';
+
+/**
+ * Raid scaling context. Optional — when omitted, the monster's stats are used
+ * as-shipped (already correct for non-raid bosses, and for ToB the per-mode
+ * variant in the monster data is the 5-man baseline that we scale down from).
+ */
+export interface RaidScaling {
+  kind: RaidKind;
+  /** ToA: 1-8. CoX: 1-15+ typical. ToB: 1-5. */
+  partySize: number;
+  /** ToA only: 0..700+. Drives HP, atk, def scaling of the monster. */
+  raidLevel?: number;
+  /** ToA path bosses only: 0..6. Adds bonus HP on top of raid-level scaling. */
+  pathLevel?: number;
+  /** CoX challenge mode — bumps HP by 50%. */
+  challengeMode?: boolean;
+}
+
 export interface PlayerLoadout {
   style: CombatStyle;
   attackStyle: AttackType;
@@ -174,6 +194,19 @@ export interface PlayerLoadout {
   spell: string | null;
   /** Weapon stance. Defaults to 'accurate' when omitted. */
   stance?: WeaponStance;
+  /** Raid context — scales target HP/def before the DPS roll. */
+  raidScaling?: RaidScaling;
+}
+
+/**
+ * One conditional effect that fired during the DPS calculation. Used by the
+ * UI to explain *why* a particular gear pick scored where it did.
+ */
+export interface FiredEffect {
+  /** Short label — typically the gear/effect name. */
+  name: string;
+  /** Human-readable explanation: what fired, what the bonus was. */
+  detail: string;
 }
 
 export interface CalcResult {
@@ -189,6 +222,8 @@ export interface CalcResult {
     attackRoll: number;
     defenceRoll: number;
   };
+  /** Conditional effects that actually fired (Salve, TBow scaling, multi-hit, raid scaling, etc.). */
+  effects: FiredEffect[];
 }
 
 export interface BestSetupCandidate {

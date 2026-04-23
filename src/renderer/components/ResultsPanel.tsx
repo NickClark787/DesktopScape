@@ -58,6 +58,19 @@ export function ResultsPanel({ candidate, computing }: Props) {
           </div>
         </div>
       </div>
+      {result.effects.length > 0 && (
+        <>
+          <div className="panel-heading">Effects fired ({result.effects.length})</div>
+          <div className="p-3 flex flex-col gap-1">
+            {result.effects.map((e, i) => (
+              <div key={i} className="text-xs flex items-baseline gap-2">
+                <span className="text-accent font-medium">{e.name}</span>
+                <span className="text-text-dim">{e.detail}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       <div className="panel-heading mt-auto">Pieces ({pieces.length})</div>
       <div className="p-3 flex flex-wrap gap-2">
         {pieces.map((p) => p && (

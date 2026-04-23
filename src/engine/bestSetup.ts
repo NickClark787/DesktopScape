@@ -26,6 +26,8 @@ export interface OptimizerOptions {
   ownedOnly?: Set<number> | null;
   /** Exclude Deadman/Bounty Hunter/Leagues/quest-locked variants when true (default true). */
   excludeModeVariants?: boolean;
+  /** Pin a stance instead of letting the optimizer pick. Skips the final stance sweep. */
+  forceStance?: WeaponStance;
 }
 
 // Substrings on `piece.version` that indicate a game-mode variant most players can't equip.
@@ -104,6 +106,7 @@ export function findBestSetup(
     ...base,
     style,
     attackStyle,
+    stance: opts.forceStance ?? base.stance,
     equipment: {},
   };
 
@@ -149,14 +152,17 @@ export function findBestSetup(
   }
 
   // Final stance sweep: gear is fixed, pick the DPS-best stance.
-  let bestStance: WeaponStance = current.stance ?? 'accurate';
+  // If the caller pinned a stance, honour it and skip the sweep.
+  let bestStance: WeaponStance = opts.forceStance ?? current.stance ?? 'accurate';
   let bestResult = calcDps({ ...current, stance: bestStance }, monster);
-  for (const candidateStance of stancesForStyle(style)) {
-    if (candidateStance === bestStance) continue;
-    const r = calcDps({ ...current, stance: candidateStance }, monster);
-    if (r.dps > bestResult.dps) {
-      bestResult = r;
-      bestStance = candidateStance;
+  if (!opts.forceStance) {
+    for (const candidateStance of stancesForStyle(style)) {
+      if (candidateStance === bestStance) continue;
+      const r = calcDps({ ...current, stance: candidateStance }, monster);
+      if (r.dps > bestResult.dps) {
+        bestResult = r;
+        bestStance = candidateStance;
+      }
     }
   }
 
@@ -194,10 +200,11 @@ export function findBestMeleeSetup(
   base: PlayerLoadout,
   monster: Monster,
   equipment: EquipmentPiece[],
-  opts: Omit<OptimizerOptions, 'style' | 'attackStyle'>,
+  opts: Omit<OptimizerOptions, 'style' | 'attackStyle'> & { forceAttackStyle?: MeleeAttackType },
 ): BestSetupCandidate | null {
+  const styles: MeleeAttackType[] = opts.forceAttackStyle ? [opts.forceAttackStyle] : ['stab', 'slash', 'crush'];
   const candidates: BestSetupCandidate[] = [];
-  for (const atk of ['stab', 'slash', 'crush'] as const) {
+  for (const atk of styles) {
     const c = findBestSetup(base, monster, equipment, { ...opts, style: 'melee', attackStyle: atk });
     if (c) candidates.push(c);
   }

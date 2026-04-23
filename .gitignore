@@ -12,3 +12,6 @@ release/
 .idea/
 
 .reference/
+
+# Claude Code session metadata (not part of the project)
+.claude/
