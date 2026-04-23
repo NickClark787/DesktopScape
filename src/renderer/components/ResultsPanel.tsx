@@ -1,5 +1,6 @@
 import type { BestSetupCandidate } from '@shared/types';
 import { GearGrid } from './GearGrid';
+import { GearIcon } from './GearIcon';
 
 interface Props {
   candidate: BestSetupCandidate | null;
@@ -74,8 +75,13 @@ export function ResultsPanel({ candidate, computing }: Props) {
       <div className="panel-heading mt-auto">Pieces ({pieces.length})</div>
       <div className="p-3 flex flex-wrap gap-2">
         {pieces.map((p) => p && (
-          <span key={`${p.slot}-${p.id}`} className="text-xs px-2 py-1 rounded bg-bg-raised border border-border">
-            <span className="text-text-faint">{p.slot}:</span>{' '}{p.name}
+          <span
+            key={`${p.slot}-${p.id}`}
+            className="text-xs px-2 py-1 rounded bg-bg-raised border border-border flex items-center gap-1.5"
+          >
+            <GearIcon piece={p} size="sm" />
+            <span className="text-text-faint">{p.slot}:</span>
+            <span>{p.name}</span>
           </span>
         ))}
       </div>
