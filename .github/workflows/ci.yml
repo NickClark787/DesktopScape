@@ -1,0 +1,55 @@
+# CI pipeline — runs on every push and PR.
+#
+# Three guard rails, ordered cheapest-first so we fail fast:
+#   1. typecheck   — ~10s, catches API/contract drift
+#   2. unit tests  — ~1s, catches engine math regressions (124 assertions)
+#   3. validator   — ~2s, runs all 47 reference DPS scenarios end-to-end
+#                    (no hard assertions; this catches structural breakage in
+#                     equipment.json/monsters.json + crash regressions)
+#   4. build       — ~30s, electron-vite build (proves bundles compile)
+#
+# We deliberately skip `npm run dist:win` here — it pulls a 113 MB Electron
+# binary + NSIS chain and adds ~5 min to every PR. The release workflow
+# (release.yml) handles full installer builds, gated on tag push.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs of this workflow for the same ref — saves CI minutes
+# when someone pushes a fixup commit on top of a PR while the previous run is
+# still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck + tests + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (main + renderer)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Reference-loadout validator (47 DPS scenarios)
+        run: npx tsx --tsconfig scripts/tsconfig.json scripts/validate-bis.mts
+
+      - name: Electron-vite build (verify bundles compile)
+        run: npm run build

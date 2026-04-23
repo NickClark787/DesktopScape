@@ -1,0 +1,80 @@
+# Release pipeline — runs only on version tag push (v*.*.*).
+#
+# Builds the Windows NSIS installer and attaches it to a GitHub Release.
+# This is the only place the heavy electron-builder chain runs; CI per-PR
+# stays fast by skipping it.
+#
+# Trigger from local once the release commit is on main:
+#   git tag v0.1.0
+#   git push origin v0.1.0
+#
+# The runner is windows-latest because electron-builder's NSIS target needs
+# native Windows tooling. Note: the winCodeSign symlink quirk we hit locally
+# (cannot create symlinks without Developer Mode) does NOT affect GitHub
+# Actions runners — they ship with the necessary admin context for 7z to
+# create symlinks.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write  # needed to create the GitHub Release and upload artifacts
+
+jobs:
+  windows-installer:
+    name: Build Windows installer (NSIS)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Re-run the cheap guard rails before shipping. If something regressed
+      # between merge-to-main and tagging, we want to know before producing
+      # a release artifact users will install.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Reference-loadout validator
+        run: npx tsx --tsconfig scripts/tsconfig.json scripts/validate-bis.mts
+
+      - name: Build app + Windows installer
+        # electron-vite build is included in `dist:win`; run it directly so
+        # any bundling failure surfaces clearly instead of buried in the
+        # electron-builder logs.
+        run: npm run dist:win
+
+      - name: Upload installer artifact (always, for inspection)
+        uses: actions/upload-artifact@v4
+        with:
+          name: GearScape-Desktop-Windows-x64
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+          if-no-files-found: error
+
+      - name: Create GitHub Release with installer
+        uses: softprops/action-gh-release@v2
+        with:
+          # The .blockmap is used by electron-updater for delta updates if/when
+          # we wire that up; including it here is cheap and forward-compatible.
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+          generate_release_notes: true
+          draft: true   # leave the release as a draft so the human can edit
+                        # the changelog and publish manually. Flip to false
+                        # once we trust the auto-generated notes.
