@@ -17,7 +17,14 @@ const api = {
     meta: DataMeta;
   }>,
   refreshData: () => ipcRenderer.invoke(IPC.refreshData) as Promise<{ ok: boolean; files: string[] }>,
-  cdnImage: (filename: string) => `${CDN_BASE}${encodeURIComponent(filename)}`,
+  /**
+   * Resolve an OSRS Wiki CDN URL for a sprite. The CDN segregates assets by
+   * kind — equipment sprites live under `/equipment/`, monster sprites under
+   * `/monsters/` — so the caller must say which it wants. Filenames already
+   * include the `.png` extension.
+   */
+  cdnImage: (filename: string, kind: 'equipment' | 'monsters') =>
+    `${CDN_BASE}${kind}/${encodeURIComponent(filename)}`,
 };
 
 contextBridge.exposeInMainWorld('gearscape', api);
