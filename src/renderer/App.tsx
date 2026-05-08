@@ -15,6 +15,7 @@ import { DataStalenessBadge } from './components/DataStalenessBadge';
 import { GearPickerModal } from './components/GearPickerModal';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import { calcDps } from '../engine/formulas';
+import { rankStyles, styleScores } from './utils/styleRanking';
 import type { AttackType, BestSetupCandidate, EquipmentPiece, EquipmentSlot, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
 
@@ -39,6 +40,19 @@ export default function App() {
     () => state.monsters.find((m) => m.id === state.selectedMonsterId) ?? null,
     [state.monsters, state.selectedMonsterId],
   );
+
+  // Style-tab order, best-to-worst against the selected monster.
+  // When no monster is selected the canonical order is returned, so the tab
+  // strip doesn't shuffle on first load.
+  const styleOrder = useMemo(() => rankStyles(selectedMonster), [selectedMonster]);
+  const styleLeaderHint = useMemo(() => {
+    if (!selectedMonster) return undefined;
+    const scores = styleScores(selectedMonster);
+    const leader = styleOrder[0];
+    // Surface the actual defence number so the recommendation is auditable —
+    // "best because lowest magic def" is more trustworthy than a bare badge.
+    return `Best vs ${selectedMonster.name} — ${leader} faces lowest defence (${scores[leader]})`;
+  }, [selectedMonster, styleOrder]);
 
   async function runOptimizer() {
     if (!selectedMonster) return;
@@ -199,7 +213,12 @@ export default function App() {
           </aside>
           <main className="flex flex-col gap-4 min-w-0">
             <div className="flex items-center justify-between gap-4 flex-wrap">
-              <StyleTabs value={state.style} onChange={state.setStyle} />
+              <StyleTabs
+                value={state.style}
+                onChange={state.setStyle}
+                order={styleOrder}
+                leaderHint={styleLeaderHint}
+              />
               <button
                 className="btn btn-primary"
                 disabled={!selectedMonster || computing}
