@@ -287,12 +287,20 @@ function Header({
   dataMeta: DataMeta | null;
 }) {
   return (
-    <header className="flex items-center justify-between px-5 py-3 border-b border-border bg-bg-soft">
+    <header className="flex items-center justify-between px-5 py-3 border-b border-border-strong bg-bg-soft shadow-panel">
       <div className="flex items-baseline gap-3">
-        <h1 className="text-xl font-bold tracking-tight">
+        {/* Wordmark in Trebuchet MS (font-rs) — the actual font the
+            RuneScape Java client used. text-shadow gives a subtle gold
+            glow underneath the title to feel like illuminated chrome. */}
+        <h1
+          className="text-2xl font-bold font-rs tracking-tight"
+          style={{ textShadow: '0 0 18px rgba(255, 203, 71, 0.25)' }}
+        >
           <span className="text-accent">Gear</span>Scape
         </h1>
-        <span className="text-xs text-text-faint uppercase tracking-widest">Best Setup</span>
+        <span className="text-[11px] text-accent/70 uppercase tracking-[0.28em] font-rs font-bold">
+          Best Setup
+        </span>
       </div>
       <div className="flex items-center gap-3">
         {notice && <span className="text-xs text-text-dim">{notice}</span>}

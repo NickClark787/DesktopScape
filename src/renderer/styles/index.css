@@ -3,42 +3,91 @@
 @tailwind utilities;
 
 html, body, #root { height: 100%; }
+body {
+  background: #1a130d;
+  /* Very subtle parchment-grain noise so the dark background doesn't read
+     as flat-black. SVG fractalNoise is cheap, GPU-rasterized, and inlines
+     without an extra request. Opacity kept low (~3%) so it adds texture
+     without becoming visual noise on top of the data UI. */
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #0e1116; }
-::-webkit-scrollbar-thumb { background: #2b3240; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #3a4453; }
+::-webkit-scrollbar-track { background: #1a130d; }
+::-webkit-scrollbar-thumb {
+  background: #4a3a26;
+  border-radius: 5px;
+  border: 1px solid #2e2218; /* sliver of bg around the thumb so it sits in a track */
+}
+::-webkit-scrollbar-thumb:hover { background: #6b5538; }
 
 @layer components {
+  /* Panel — the basic bordered surface used by every sidebar and main
+     section. Slight gilt-highlight on the top inner edge gives the chrome
+     a hint of metallic light without being visually loud. */
   .panel {
-    @apply bg-bg-soft border border-border rounded-lg;
+    @apply bg-bg-soft border border-border rounded-md shadow-panel;
   }
+
+  /* Panel heading — the in-game gilt-uppercase tab label treatment.
+     Trebuchet MS (font-rs) was the actual face used by the RuneScape Java
+     client, so this lands period-correct without bundling a custom font.
+     A faint gold linear-gradient washes from the top to add the "lit from
+     above by gold trim" feel. */
   .panel-heading {
-    @apply px-4 py-2 text-xs uppercase tracking-wider font-semibold text-text-dim border-b border-border;
+    @apply px-4 py-2 text-xs uppercase tracking-[0.14em] font-bold font-rs text-accent
+           border-b border-border;
+    background: linear-gradient(to bottom, rgba(255, 203, 71, 0.05), transparent 70%);
   }
+
+  /* Equipment slot cell — recessed dark well with bronze stroke. The heavy
+     inset shadow plus near-black bg-bg-slot mimics the equipment-interface
+     wells in-game; on hover, the bronze stroke brightens to OSRS gold to
+     advertise the click-to-swap affordance. */
   .slot-cell {
-    @apply relative aspect-square bg-bg-slot rounded-md border border-border shadow-slot
+    @apply relative aspect-square bg-bg-slot rounded border border-border shadow-slot
            flex items-center justify-center overflow-hidden cursor-pointer transition;
   }
-  .slot-cell:hover { @apply border-accent/60; }
+  .slot-cell:hover { @apply border-accent/70; }
   .slot-cell-label {
     @apply absolute inset-x-0 bottom-0 text-[10px] text-text-faint text-center pointer-events-none select-none;
   }
+
+  /* Generic button — raised-metal feel via the btn shadow (1px highlight
+     up, 1px shadow down). Hover shifts the border + text to gold without
+     repainting the background, which keeps the chrome stable while
+     advertising interactivity. */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md font-semibold text-sm
-           px-3 py-1.5 transition border border-border bg-bg-raised text-text hover:border-accent/60 hover:text-accent;
+    @apply inline-flex items-center justify-center gap-2 rounded font-semibold text-sm
+           px-3 py-1.5 transition border border-border bg-bg-raised text-text shadow-btn
+           hover:border-accent/70 hover:text-accent;
   }
+
+  /* Primary CTA — gold fill with dark text, like the action buttons on
+     the in-game world map / quest list. Uses font-bold for stronger weight
+     against the bright gold background. */
   .btn-primary {
-    @apply bg-accent text-black border-accent hover:bg-accent-hover hover:border-accent-hover hover:text-black;
+    @apply bg-accent text-bg border-accent font-bold
+           hover:bg-accent-hover hover:border-accent-hover hover:text-bg;
   }
+
+  /* Numeric input — tabular-nums so the digits don't dance when typed,
+     and right-aligned to anchor the number to the field edge. */
   .num-input {
-    @apply w-16 bg-bg-raised border border-border rounded px-2 py-1 text-right text-sm outline-none
-           focus:border-accent;
+    @apply w-16 bg-bg-raised border border-border rounded px-2 py-1 text-right text-sm
+           outline-none tabular-nums focus:border-accent;
   }
+
+  /* Pill tabs (StyleTabs, etc.) — the active tab gets the gold accent
+     and the raised-metal shadow so it visually pops out of the surrounding
+     bg-soft strip. Inactive tabs hover gold without the lift, keeping the
+     active state distinct. */
   .pill-tab {
-    @apply px-4 py-2 text-sm font-semibold rounded-md text-text-dim hover:text-text;
+    @apply px-4 py-2 text-sm font-semibold rounded text-text-dim transition
+           hover:text-accent;
   }
   .pill-tab[data-active=true] {
-    @apply bg-bg-raised text-text shadow-slot;
+    @apply bg-bg-raised text-accent shadow-btn;
   }
 }
