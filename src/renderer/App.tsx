@@ -54,6 +54,19 @@ export default function App() {
     return `Best vs ${selectedMonster.name} — ${leader} faces lowest defence (${scores[leader]})`;
   }, [selectedMonster, styleOrder]);
 
+  /**
+   * Style-tab click handler. The store's setStyle wipes the loadout's
+   * equipment + stance (a melee weapon doesn't carry into Ranged), but the
+   * displayed candidate lives in this component's local state and would
+   * otherwise persist — leaving stale DPS metrics on screen for the wrong
+   * style. Clearing both in the same handler keeps the UI honest after
+   * a tab click. React 18 batches these so the re-render is single-frame.
+   */
+  function handleStyleChange(s: typeof state.style) {
+    setCandidate(null);
+    state.setStyle(s);
+  }
+
   async function runOptimizer() {
     if (!selectedMonster) return;
     setComputing(true);
@@ -215,7 +228,7 @@ export default function App() {
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <StyleTabs
                 value={state.style}
-                onChange={state.setStyle}
+                onChange={handleStyleChange}
                 order={styleOrder}
                 leaderHint={styleLeaderHint}
               />

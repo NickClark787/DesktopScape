@@ -249,6 +249,15 @@ export const useApp = create<AppState>((set) => ({
       ...st.loadout,
       style: s,
       attackStyle: s === 'melee' ? 'slash' : s,
+      // Equipment from the prior style is invalid for the new one — a melee
+      // weapon doesn't make sense once the user is on the Ranged tab. Wipe
+      // so the gear grid resets and the picker's substitution baseline is
+      // clean. The user gets the empty grid + "click any slot" nudge, or
+      // can re-run Find best setup to repopulate.
+      equipment: {},
+      // Stance is also weapon-coupled; unset so the engine picks the
+      // default for whatever weapon gets equipped next.
+      stance: undefined,
     },
   })),
   setMonster: (id) => set({ selectedMonsterId: id }),
