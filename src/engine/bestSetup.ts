@@ -18,6 +18,35 @@ import { EQUIPMENT_SLOTS } from '@shared/types';
 import { calcDps, pieceScore, stancesForStyle } from './formulas';
 import { CANDIDATE_SPELL_NAMES } from './spells';
 
+/**
+ * Items that the per-slot heuristic (`pieceScore`) systematically underrates
+ * because their value comes from synergy or target-type bonuses, not raw
+ * offensive/strength stats:
+ *
+ *   - Salve amulet & variants — +15-20% acc/dmg vs undead. Salve has 0 str,
+ *     so it scores 0 in the heuristic and gets pruned from the neck slot.
+ *     Without it, the optimizer never recommends BiS for Vorkath, Aberrant
+ *     spectres, KQ, etc.
+ *   - Slayer helm (i) / Black mask (i) — +12.5%-16.67% acc/dmg on slayer
+ *     task. Same problem: low raw stats, big conditional damage.
+ *   - Berserker necklace — +20% damage with obsidian melee weapons. No
+ *     intrinsic str bonus, scores poorly.
+ *
+ * We splice these in unconditionally past the shortlist trim so they get
+ * evaluated by the full DPS pass even at low `shortlistPerSlot`. Cheap
+ * because the additional pieces are O(1) per slot.
+ */
+const SYNERGY_FORCE_INCLUDE: ReadonlyArray<RegExp> = [
+  /^Salve amulet/i,
+  /^Slayer helmet \(i\)/i,
+  /^Black mask \(i\)/i,
+  /^Berserker necklace( \(or\))?$/i,
+];
+
+function shouldForceInclude(piece: EquipmentPiece): boolean {
+  return SYNERGY_FORCE_INCLUDE.some((re) => re.test(piece.name));
+}
+
 export interface OptimizerOptions {
   style: CombatStyle;
   attackStyle: PlayerLoadout['attackStyle'];
@@ -93,10 +122,22 @@ export function findBestSetup(
     bySlot[slot].push(piece);
   }
 
-  // Score + trim to shortlistPerSlot per slot (plus always include "no item" slot option)
+  // Score + trim to shortlistPerSlot per slot (plus always include "no item"
+  // slot option). After trimming, splice back in any SYNERGY_FORCE_INCLUDE
+  // pieces that survived the eligibility filter — see SYNERGY_FORCE_INCLUDE
+  // for the rationale (Salve, Slayer helm (i), Berserker necklace etc.).
   for (const slot of EQUIPMENT_SLOTS) {
-    bySlot[slot].sort((a, b) => pieceScore(b, style, attackStyle) - pieceScore(a, style, attackStyle));
-    bySlot[slot] = bySlot[slot].slice(0, shortlistPerSlot);
+    const sorted = bySlot[slot].slice().sort(
+      (a, b) => pieceScore(b, style, attackStyle) - pieceScore(a, style, attackStyle),
+    );
+    const trimmed = sorted.slice(0, shortlistPerSlot);
+    const trimmedIds = new Set(trimmed.map((p) => p.id));
+    for (const p of sorted) {
+      if (!trimmedIds.has(p.id) && shouldForceInclude(p)) {
+        trimmed.push(p);
+      }
+    }
+    bySlot[slot] = trimmed;
   }
 
   // Start from empty, greedy fill highest-DPS item per slot, then refine by sweeping each slot
@@ -174,21 +215,6 @@ export function findBestSetup(
     spell: current.spell ?? null,
     stance: bestStance,
   };
-}
-
-export function bestMeleeAttackStyle(
-  base: PlayerLoadout,
-  monster: Monster,
-): MeleeAttackType {
-  // Probe each melee attack style by picking the one with lowest monster defence.
-  const d = monster.defensive;
-  const choices: Array<[MeleeAttackType, number]> = [
-    ['stab', d.stab],
-    ['slash', d.slash],
-    ['crush', d.crush],
-  ];
-  choices.sort((a, b) => a[1] - b[1]);
-  return choices[0][0];
 }
 
 /**

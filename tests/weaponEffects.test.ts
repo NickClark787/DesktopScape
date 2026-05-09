@@ -587,6 +587,15 @@ describe('void knight set', () => {
     expect(r.accMult).toBeCloseTo(1.45, 6);
   });
 
+  it('regular void magic: +0% dmg / +30% acc (NOT 45 — that is elite-only)', () => {
+    // Regression guard for the bug fixed alongside this test: earlier code
+    // returned +45% accuracy for both regular and elite Void mage, silently
+    // buffing the regular set by 15% magic acc.
+    const r = voidBonus({ hands: gloves, head: mageHelm, body: top, legs: robe }, 'magic');
+    expect(r.dmgMult).toBeCloseTo(1.00, 6);
+    expect(r.accMult).toBeCloseTo(1.30, 6);
+  });
+
   it('mismatched helm/style returns identity', () => {
     expect(voidBonus({ hands: gloves, head: rangerHelm, body: top, legs: robe }, 'melee')).toEqual({ dmgMult: 1, accMult: 1 });
     expect(voidBonus({ hands: gloves, head: meleeHelm, body: top, legs: robe }, 'magic')).toEqual({ dmgMult: 1, accMult: 1 });
@@ -1006,5 +1015,65 @@ describe('specialAvgPerSwing dispatcher', () => {
     const ammo = piece({ name: 'Diamond bolts (e)', slot: 'ammo' });
     const r = specialAvgPerSwing(xbow, ammo, 50, 0.5, monster({ skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } }));
     expect(r).toBeCloseTo(14.10, 6);
+  });
+});
+
+// ------------ Magic prayers — accuracy only, no damage bonus ------------
+
+describe('magic prayers (regression: no damage bonus)', () => {
+  /**
+   * Earlier code attributed +1/2/4% magic damage to Mystic Lore/Might/Augury.
+   * That was incorrect — OSRS magic prayers boost magic accuracy only, never
+   * magic damage. These tests pin the corrected behavior so a future refactor
+   * can't silently re-introduce the bug.
+   *
+   * The check works by running calcDps with a powered staff (where max hit is
+   * a deterministic function of magic level + the gear damage bonus) and
+   * confirming the prayer doesn't change max hit.
+   */
+  const magicLoadout = (prayerOverrides: Partial<PlayerLoadout['prayers']> = {}): PlayerLoadout => loadout({
+    style: 'magic',
+    attackStyle: 'magic',
+    spell: null,
+    prayers: {
+      piety: false, chivalry: false, ultimateStrength: false, superhumanStrength: false,
+      burstOfStrength: false, incredibleReflexes: false, improvedReflexes: false, clarityOfThought: false,
+      rigour: false, eagleEye: false, hawkEye: false, sharpEye: false,
+      augury: false, mysticMight: false, mysticLore: false, mysticWill: false,
+      ...prayerOverrides,
+    },
+    equipment: {
+      // Trident of the seas: max hit = floor(magic/3 - 5). At magic 99 → 28.
+      // No magic_str on this loadout, so prayer is the only thing that could
+      // affect max hit. Any prayer-driven change would show up here.
+      weapon: piece({
+        name: 'Trident of the seas', slot: 'weapon', category: 'Powered Staff', isTwoHanded: true,
+      }),
+    },
+  });
+  const target = monster({ skills: { atk: 1, def: 1, hp: 100, magic: 1, ranged: 1, str: 1 } });
+
+  it('Augury does not increase max hit', () => {
+    const baseline = calcDps(magicLoadout(), target).maxHit;
+    const withAugury = calcDps(magicLoadout({ augury: true }), target).maxHit;
+    expect(withAugury).toBe(baseline);
+  });
+
+  it('Mystic Might does not increase max hit', () => {
+    const baseline = calcDps(magicLoadout(), target).maxHit;
+    const withMight = calcDps(magicLoadout({ mysticMight: true }), target).maxHit;
+    expect(withMight).toBe(baseline);
+  });
+
+  it('Mystic Lore does not increase max hit', () => {
+    const baseline = calcDps(magicLoadout(), target).maxHit;
+    const withLore = calcDps(magicLoadout({ mysticLore: true }), target).maxHit;
+    expect(withLore).toBe(baseline);
+  });
+
+  it('Augury still boosts magic accuracy (sanity check — only damage was the bug)', () => {
+    const baseline = calcDps(magicLoadout(), target).accuracy;
+    const withAugury = calcDps(magicLoadout({ augury: true }), target).accuracy;
+    expect(withAugury).toBeGreaterThan(baseline);
   });
 });

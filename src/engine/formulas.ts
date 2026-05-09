@@ -133,13 +133,11 @@ interface PrayerMults {
   ranged: number;
   rangedStr: number;
   magic: number;
-  /** Additive magic damage bonus in tenths-of-a-percent (Augury = 40 → +4%). */
-  magicDmgAdd: number;
   def: number;
 }
 
 function prayerMultipliers(pr: Prayers): PrayerMults {
-  const m: PrayerMults = { atk: 1, str: 1, ranged: 1, rangedStr: 1, magic: 1, magicDmgAdd: 0, def: 1 };
+  const m: PrayerMults = { atk: 1, str: 1, ranged: 1, rangedStr: 1, magic: 1, def: 1 };
 
   // Melee attack
   if (pr.clarityOfThought) m.atk = Math.max(m.atk, 1.05);
@@ -160,11 +158,16 @@ function prayerMultipliers(pr: Prayers): PrayerMults {
   if (pr.eagleEye) { m.ranged = Math.max(m.ranged, 1.15); m.rangedStr = Math.max(m.rangedStr, 1.15); }
   if (pr.rigour) { m.ranged = Math.max(m.ranged, 1.20); m.rangedStr = Math.max(m.rangedStr, 1.23); m.def = Math.max(m.def, 1.25); }
 
-  // Magic — accuracy multiplicative, damage additive in /1000.
+  // Magic — accuracy multiplicative only. No standard prayer in OSRS gives
+  // magic damage; the Mystic line and Augury boost magic accuracy (and
+  // Augury also magic defence), but damage comes exclusively from gear
+  // (magic_str) and items like Imbued Heart. Earlier code attributed
+  // +1/2/4% magic damage to Mystic Lore/Might/Augury — that was incorrect
+  // and silently inflated every magic max hit while those prayers were on.
   if (pr.mysticWill) { m.magic = Math.max(m.magic, 1.05); }
-  if (pr.mysticLore) { m.magic = Math.max(m.magic, 1.10); m.magicDmgAdd = Math.max(m.magicDmgAdd, 10); }
-  if (pr.mysticMight) { m.magic = Math.max(m.magic, 1.15); m.magicDmgAdd = Math.max(m.magicDmgAdd, 20); }
-  if (pr.augury) { m.magic = Math.max(m.magic, 1.25); m.magicDmgAdd = Math.max(m.magicDmgAdd, 40); m.def = Math.max(m.def, 1.25); }
+  if (pr.mysticLore) { m.magic = Math.max(m.magic, 1.10); }
+  if (pr.mysticMight) { m.magic = Math.max(m.magic, 1.15); }
+  if (pr.augury) { m.magic = Math.max(m.magic, 1.25); m.def = Math.max(m.def, 1.25); }
 
   return m;
 }
@@ -442,7 +445,9 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
 
     // 2) Apply magic damage bonus — additive in tenths-of-a-percent.
     //    maxHit = baseMax + trunc(baseMax * magicDmgBonus / 1000)
-    const magicDmgBonus = geartMagicStr + pr.magicDmgAdd;
+    // Magic damage bonus is gear-only — no standard prayer contributes.
+    // Bonus is in tenths-of-a-percent (so 30 = +3%).
+    const magicDmgBonus = geartMagicStr;
     maxHit = baseMax + Math.trunc((baseMax * magicDmgBonus) / 1000);
 
     // Chaos gauntlets add a flat +3 to max hit on Bolt spells, BEFORE the

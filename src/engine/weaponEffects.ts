@@ -672,8 +672,13 @@ export function voidBonus(
     return { dmgMult: dmg, accMult: 1.10 };
   }
   if (style === 'magic' && set.helm === 'mage') {
+    // Regular Void mage helm: +30% magic accuracy, no damage bonus.
+    // Elite Void mage helm: +45% magic accuracy + 2.5% magic damage.
+    // Earlier code returned +45% accuracy for both tiers, silently buffing
+    // the regular set by an extra 15% magic accuracy.
     const dmg = set.tier === 'elite' ? 1.025 : 1.00;
-    return { dmgMult: dmg, accMult: 1.45 };
+    const acc = set.tier === 'elite' ? 1.45 : 1.30;
+    return { dmgMult: dmg, accMult: acc };
   }
   return { dmgMult: 1, accMult: 1 };
 }
