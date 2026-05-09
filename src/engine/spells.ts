@@ -26,8 +26,15 @@ export function spellByName(name: string | null | undefined): Spell | null {
   return SPELL_INDEX.get(name) ?? null;
 }
 
-/** Offensive standard/ancient spells the optimizer should try. */
+/** Offensive standard/ancient spells the optimizer should try.
+ *  All four elemental Surge spells are listed so the optimizer can match
+ *  monster elemental weaknesses (e.g. Kree'arra weak to air → Wind Surge).
+ *  Without Wind/Water/Earth Surge the engine's elemental-weakness bonus
+ *  was unreachable for non-fire-weak targets. */
 export const CANDIDATE_SPELL_NAMES = [
+  'Wind Surge',
+  'Water Surge',
+  'Earth Surge',
   'Fire Surge',
   'Fire Wave',
   'Ice Barrage',

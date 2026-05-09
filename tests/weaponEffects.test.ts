@@ -1077,3 +1077,52 @@ describe('magic prayers (regression: no damage bonus)', () => {
     expect(withAugury).toBeGreaterThan(baseline);
   });
 });
+
+// ------------ Monster elemental weakness ------------
+
+describe('monster elemental weakness (regression)', () => {
+  /**
+   * Pins the calc that lets the optimizer recognise targets like Kree'arra
+   * (weak to air) or Smoke devil (weak to water). Earlier code read
+   * spell.element only for tome bonuses and ignored monster.weakness
+   * entirely, so air-weak bosses were optimized with Ice Barrage.
+   */
+  function magicLoadout(spell: string | null): PlayerLoadout {
+    return loadout({
+      style: 'magic', attackStyle: 'magic', spell,
+      prayers: {
+        piety: false, chivalry: false, ultimateStrength: false, superhumanStrength: false,
+        burstOfStrength: false, incredibleReflexes: false, improvedReflexes: false, clarityOfThought: false,
+        rigour: false, eagleEye: false, hawkEye: false, sharpEye: false,
+        augury: false, mysticMight: false, mysticLore: false, mysticWill: false,
+      },
+      equipment: {},
+    });
+  }
+  const airWeak30 = monster({ weakness: { element: 'air', severity: 30 }, skills: { atk: 1, def: 1, hp: 100, magic: 1, ranged: 1, str: 1 } });
+  const noWeakness = monster({ weakness: null, skills: { atk: 1, def: 1, hp: 100, magic: 1, ranged: 1, str: 1 } });
+
+  it('matching element gets +severity% to max hit and attack roll', () => {
+    const wind = spellByName('Wind Surge');
+    if (!wind) throw new Error('Wind Surge spell missing from data');
+    const weak = calcDps(magicLoadout('Wind Surge'), airWeak30);
+    const plain = calcDps(magicLoadout('Wind Surge'), noWeakness);
+    // 30% boost on max hit. Asserting the attack roll (not the derived
+    // accuracy probability, which gets capped at 1.0 against the no-defence
+    // test monster) so the multiplier shows up cleanly.
+    expect(weak.maxHit).toBe(Math.trunc(plain.maxHit * 1.30));
+    expect(weak.details.attackRoll).toBe(Math.trunc(plain.details.attackRoll * 1.30));
+  });
+
+  it('non-matching element receives no bonus (Ice Barrage on air-weak target)', () => {
+    const weakIce = calcDps(magicLoadout('Ice Barrage'), airWeak30);
+    const plainIce = calcDps(magicLoadout('Ice Barrage'), noWeakness);
+    expect(weakIce.maxHit).toBe(plainIce.maxHit);
+  });
+
+  it('powered staves are not boosted (no spell element to match)', () => {
+    const lo = magicLoadout(null);
+    lo.equipment.weapon = piece({ name: 'Trident of the seas', slot: 'weapon', category: 'Powered Staff', isTwoHanded: true });
+    expect(calcDps(lo, airWeak30).maxHit).toBe(calcDps(lo, noWeakness).maxHit);
+  });
+});

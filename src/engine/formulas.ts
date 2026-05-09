@@ -312,6 +312,17 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       : monster.defensive.crush;
     defenceRoll = (monster.skills.def + 9) * (defStyle + 64);
 
+    // Flying targets (Kree'arra, Aviansie, Smoke devil, Vorkath's lightning
+    // form) can't be reached by melee — every attack misses. Force max hit
+    // and accuracy to 0 so the optimizer never picks melee for these.
+    // Without this, Kree'arra was getting a "best melee setup" recommendation
+    // even though no melee weapon would land a single hit in-game.
+    if ((monster.attributes || []).some((a) => a.toLowerCase() === 'flying')) {
+      maxHit = 0;
+      attackRoll = 0;
+      effects.push({ name: 'Flying target', detail: `${monster.name} can't be hit by melee` });
+    }
+
     // Demonbane weapons (Arclight / Emberlight / Darklight) vs demons.
     const dm = demonbaneMult(weapon, monster);
     maxHit = Math.trunc(maxHit * dm.dmgMult);
@@ -465,6 +476,26 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     if (mw.dmgMult !== 1 || mw.accMult !== 1) {
       const src = (shield && /^Tome of/i.test(shield.name)) ? shield.name : weapon?.name ?? 'Magic weapon';
       pushIfFired(effects, src, mw, spell ? `on ${spell.name}` : '');
+    }
+
+    // Monster elemental weakness — when the cast spell's element matches a
+    // weakness the monster has in the data (e.g. Kree'arra weak to air at
+    // severity 30), both max hit and attack roll get a 1 + severity/100
+    // multiplier. Without this, the optimizer never picked Wind/Air spells
+    // for fight scenarios where they were obviously correct (Kree'arra,
+    // Smoke devil, etc).
+    if (
+      spell?.element
+      && monster.weakness?.element === spell.element
+      && monster.weakness.severity
+    ) {
+      const mult = 1 + monster.weakness.severity / 100;
+      maxHit = Math.trunc(maxHit * mult);
+      attackRoll = Math.trunc(attackRoll * mult);
+      effects.push({
+        name: 'Elemental weakness',
+        detail: `${spell.element} +${monster.weakness.severity}% dmg & acc on ${monster.name}`,
+      });
     }
 
     // Void Knight / Elite Void — mage helm set.
