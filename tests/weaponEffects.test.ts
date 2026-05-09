@@ -1125,6 +1125,23 @@ describe('monster elemental weakness (regression)', () => {
     lo.equipment.weapon = piece({ name: 'Trident of the seas', slot: 'weapon', category: 'Powered Staff', isTwoHanded: true });
     expect(calcDps(lo, airWeak30).maxHit).toBe(calcDps(lo, noWeakness).maxHit);
   });
+
+  it('powered staves do NOT inherit weakness when an element-matching spell is in the loadout', () => {
+    // Regression for the Kree'arra Tumeken's shadow +41% inflation: the
+    // optimizer's per-spell loop pairs powered staves with each candidate
+    // spell name, but powered staves don't actually cast the spell — they
+    // fire their own projectile. Earlier code applied the air weakness to
+    // Shadow's damage just because state.loadout.spell happened to be
+    // "Wind Surge", producing DPS that diverged from gearscape.net by 41%.
+    const lo = magicLoadout('Wind Surge');
+    lo.equipment.weapon = piece({
+      name: "Tumeken's shadow",
+      slot: 'weapon',
+      category: 'Powered Staff',
+      isTwoHanded: true,
+    });
+    expect(calcDps(lo, airWeak30).maxHit).toBe(calcDps(lo, noWeakness).maxHit);
+  });
 });
 
 // ------------ Flying targets — melee + halberd interaction ------------

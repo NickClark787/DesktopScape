@@ -422,7 +422,16 @@ export function findBestMagicSetup(
       style: 'magic',
       attackStyle: 'magic',
     });
-    if (c) candidates.push({ ...c, spell: spellName });
+    if (c) {
+      // If the optimizer picked a powered staff or salamander, the spell
+      // field is irrelevant — those weapons fire their own projectile.
+      // Drop the tag so the UI doesn't say "casting Wind Surge" when the
+      // actual damage is from a Tumeken's shadow projectile.
+      const w = c.equipment.weapon;
+      const ignoresSpell = w
+        && (w.category === 'Powered Staff' || w.category === 'Salamander');
+      candidates.push({ ...c, spell: ignoresSpell ? null : spellName });
+    }
   }
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.result.dps - a.result.dps);

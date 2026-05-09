@@ -450,9 +450,18 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     // 1) Resolve base max hit + the spell/powered-staff context for bonuses
     let baseMax = 0;
     const spell = spellByName(loadout.spell);
+    // The "effective" spell — non-null only when the weapon actually casts
+    // it. Powered staves and salamanders fire their own projectile and
+    // ignore the spell field, so any spell-driven bonus (chaos gauntlets,
+    // Tome multipliers, Virtus on ancients, monster elemental weakness)
+    // must consult `effectiveSpell` rather than `spell` directly. Without
+    // this gate, Shadow + state.spell="Wind Surge" was getting a phantom
+    // +30% air weakness on Kree'arra (DPS 11.4 vs gearscape 8.1).
+    const weaponCastsSpell = weapon === null || allowsSpellCasting(weapon);
+    const effectiveSpell = weaponCastsSpell ? spell : null;
     if (weapon && (isPoweredStaff(weapon) || isSalamander(weapon))) {
       baseMax = poweredStaffMaxHit(weapon.name, magicLevel) ?? 0;
-    } else if (allowsSpellCasting(weapon) || weapon === null) {
+    } else if (weaponCastsSpell) {
       if (spell) baseMax = getSpellMaxHit(spell, magicLevel, weapon);
       if (spell?.name === 'Magic Dart' && weapon) {
         const variant = weapon.name === "Slayer's staff (e)" ? '(e) — magic/6 + 13' : 'magic/10 + 10';
@@ -468,20 +477,22 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     maxHit = baseMax + Math.trunc((baseMax * magicDmgBonus) / 1000);
 
     // Chaos gauntlets add a flat +3 to max hit on Bolt spells, BEFORE the
-    // book/staff multiplier so Tome of fire scales the +3 as well.
-    const cgBonus = chaosGauntletsBonus(loadout.equipment.hands, spell);
+    // book/staff multiplier so Tome of fire scales the +3 as well. Uses
+    // effectiveSpell so a powered staff with "Fire Bolt" loaded doesn't
+    // wrongly get the +3.
+    const cgBonus = chaosGauntletsBonus(loadout.equipment.hands, effectiveSpell);
     maxHit += cgBonus;
     if (cgBonus > 0) effects.push({ name: 'Chaos gauntlets', detail: `+${cgBonus} max hit (Bolt spell)` });
 
     // 3) Apply weapon/book multiplier (Tome of fire ×1.5, Smoke staff ×1.1, …).
     //    Spell-only — powered staves don't use spells, so bonus is identity.
     const shield = loadout.equipment.shield ?? null;
-    const mw = magicWeaponMult(weapon, shield, spell);
+    const mw = magicWeaponMult(weapon, shield, effectiveSpell);
     maxHit = Math.trunc(maxHit * mw.dmgMult);
     attackRoll = Math.trunc(attackRoll * mw.accMult);
     if (mw.dmgMult !== 1 || mw.accMult !== 1) {
       const src = (shield && /^Tome of/i.test(shield.name)) ? shield.name : weapon?.name ?? 'Magic weapon';
-      pushIfFired(effects, src, mw, spell ? `on ${spell.name}` : '');
+      pushIfFired(effects, src, mw, effectiveSpell ? `on ${effectiveSpell.name}` : '');
     }
 
     // Monster elemental weakness — when the cast spell's element matches a
@@ -490,9 +501,12 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     // multiplier. Without this, the optimizer never picked Wind/Air spells
     // for fight scenarios where they were obviously correct (Kree'arra,
     // Smoke devil, etc).
+    //
+    // Uses effectiveSpell — see the weaponCastsSpell gate above for why
+    // powered staves don't pick up the matching-element weakness boost.
     if (
-      spell?.element
-      && monster.weakness?.element === spell.element
+      effectiveSpell?.element
+      && monster.weakness?.element === effectiveSpell.element
       && monster.weakness.severity
     ) {
       const mult = 1 + monster.weakness.severity / 100;
@@ -500,7 +514,7 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       attackRoll = Math.trunc(attackRoll * mult);
       effects.push({
         name: 'Elemental weakness',
-        detail: `${spell.element} +${monster.weakness.severity}% dmg & acc on ${monster.name}`,
+        detail: `${effectiveSpell.element} +${monster.weakness.severity}% dmg & acc on ${monster.name}`,
       });
     }
 
@@ -510,8 +524,10 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     attackRoll = Math.trunc(attackRoll * vmg.accMult);
     pushIfFired(effects, 'Void (magic)', vmg);
 
-    // Virtus robes — per-piece bonus on ancient-spellbook spells.
-    const vir = virtusBonus(loadout.equipment, spell);
+    // Virtus robes — per-piece bonus on ancient-spellbook spells. Uses
+    // effectiveSpell so a powered staff with "Ice Barrage" loaded doesn't
+    // wrongly inherit the Virtus damage boost.
+    const vir = virtusBonus(loadout.equipment, effectiveSpell);
     maxHit = Math.trunc(maxHit * vir.dmgMult);
     pushIfFired(effects, 'Virtus robes', vir, '(ancient)');
 
