@@ -1126,3 +1126,48 @@ describe('monster elemental weakness (regression)', () => {
     expect(calcDps(lo, airWeak30).maxHit).toBe(calcDps(lo, noWeakness).maxHit);
   });
 });
+
+// ------------ Flying targets — melee + halberd interaction ------------
+
+describe('flying targets', () => {
+  /**
+   * Pins the OSRS rule that flying creatures (Kree'arra, Aviansie, Smoke
+   * devil) can't be reached by most melee weapons. Halberds are the
+   * exception — their 2-tile reach is the only melee answer.
+   */
+  const flying = monster({
+    name: 'Test flyer',
+    attributes: ['flying'],
+    skills: { atk: 1, def: 1, hp: 100, magic: 1, ranged: 1, str: 99 },
+  });
+
+  function meleeLoadout(weapon: EquipmentPiece): PlayerLoadout {
+    return loadout({
+      style: 'melee', attackStyle: 'slash',
+      equipment: {
+        weapon,
+        // Some str bonus so max hit > 0 in the no-flying baseline.
+        body: piece({ name: 'Bandos chestplate', slot: 'body', bonuses: { str: 4, ranged_str: 0, magic_str: 0, prayer: 1 } }),
+      },
+    });
+  }
+
+  it('non-halberd melee → max hit 0 vs flying', () => {
+    const r = calcDps(meleeLoadout(piece({ name: 'Abyssal whip', slot: 'weapon', category: 'Whip', offensive: { stab: 0, slash: 82, crush: 0, magic: 0, ranged: 0 } })), flying);
+    expect(r.maxHit).toBe(0);
+    expect(r.dps).toBe(0);
+  });
+
+  it('halberd → can hit (Polearm category bypasses the flying block)', () => {
+    const r = calcDps(meleeLoadout(piece({
+      name: 'Dragon halberd',
+      slot: 'weapon',
+      category: 'Polearm',
+      isTwoHanded: true,
+      offensive: { stab: 70, slash: 95, crush: 0, magic: 0, ranged: 0 },
+      bonuses: { str: 89, ranged_str: 0, magic_str: 0, prayer: 0 },
+    })), flying);
+    expect(r.maxHit).toBeGreaterThan(0);
+    expect(r.dps).toBeGreaterThan(0);
+  });
+});

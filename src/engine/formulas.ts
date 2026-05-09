@@ -312,15 +312,21 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       : monster.defensive.crush;
     defenceRoll = (monster.skills.def + 9) * (defStyle + 64);
 
-    // Flying targets (Kree'arra, Aviansie, Smoke devil, Vorkath's lightning
-    // form) can't be reached by melee — every attack misses. Force max hit
-    // and accuracy to 0 so the optimizer never picks melee for these.
-    // Without this, Kree'arra was getting a "best melee setup" recommendation
-    // even though no melee weapon would land a single hit in-game.
+    // Flying targets (Kree'arra, Aviansie, Smoke devil) can't be reached by
+    // most melee weapons — every attack misses. Halberds are the exception:
+    // their 2-tile reach lets them hit flying creatures from outside melee
+    // range, which is the canonical "melee Kree'arra" setup. Polearm
+    // category covers all halberds (Bronze through Noxious / Crystal /
+    // Corrupted), and contains no non-halberd entries in the data.
     if ((monster.attributes || []).some((a) => a.toLowerCase() === 'flying')) {
-      maxHit = 0;
-      attackRoll = 0;
-      effects.push({ name: 'Flying target', detail: `${monster.name} can't be hit by melee` });
+      const isHalberd = weapon?.category === 'Polearm';
+      if (!isHalberd) {
+        maxHit = 0;
+        attackRoll = 0;
+        effects.push({ name: 'Flying target', detail: `${monster.name} can only be meleed with a halberd` });
+      } else {
+        effects.push({ name: 'Halberd reach', detail: `${monster.name} hit at 2-tile range` });
+      }
     }
 
     // Demonbane weapons (Arclight / Emberlight / Darklight) vs demons.
