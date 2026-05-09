@@ -59,6 +59,12 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
   function handleSave() {
     const trimmed = name.trim();
     if (!trimmed) return;
+    // Confirm before silently overwriting an existing snapshot — saving used
+    // to be unrecoverable, you'd realize after the fact that you'd lost the
+    // saved version.
+    if (saved[trimmed] && !window.confirm(`Overwrite saved loadout "${trimmed}"?`)) {
+      return;
+    }
     onSave(trimmed);
     setName('');
   }
@@ -143,12 +149,14 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
                         <button
                           onClick={() => { onDelete(key); setConfirmDelete(null); }}
                           className="btn text-xs text-red-400 border-red-400/40 hover:bg-red-400/10"
+                          aria-label={`Confirm delete loadout ${key}`}
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setConfirmDelete(null)}
                           className="btn text-xs"
+                          aria-label="Cancel delete"
                         >
                           Cancel
                         </button>
@@ -158,6 +166,7 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
                         onClick={() => setConfirmDelete(key)}
                         className="btn text-xs hover:text-red-400"
                         title="Delete"
+                        aria-label={`Delete loadout ${key}`}
                       >
                         ×
                       </button>

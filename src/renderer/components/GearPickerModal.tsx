@@ -167,7 +167,12 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
       >
         <div className="panel-heading flex items-center justify-between rounded-t-lg">
           <span>Pick a {SLOT_TITLE[slot].toLowerCase()}</span>
-          <button onClick={onClose} className="text-text-faint hover:text-text px-2" title="Close (Esc)">×</button>
+          <button
+            onClick={onClose}
+            className="text-text-faint hover:text-text px-2"
+            title="Close (Esc)"
+            aria-label="Close picker"
+          >×</button>
         </div>
         <div className="p-3 flex flex-col gap-3 min-h-0">
           <input

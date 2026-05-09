@@ -107,6 +107,7 @@ export function OwnedFilterPanel({
                       key={`${p.id}-${p.version}`}
                       onClick={() => onRemove(p.id)}
                       title={`Remove ${p.name}${p.version ? ` (${p.version})` : ''}`}
+                      aria-label={`Remove ${p.name}${p.version ? ` (${p.version})` : ''} from owned items`}
                       className="text-xs px-2 py-1 rounded bg-bg-raised border border-border hover:border-accent hover:text-accent flex items-center gap-1.5"
                     >
                       <GearIcon piece={p} size="xs" />
