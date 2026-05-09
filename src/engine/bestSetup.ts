@@ -51,6 +51,13 @@ const SYNERGY_FORCE_INCLUDE: ReadonlyArray<RegExp> = [
 ];
 
 function shouldForceInclude(piece: EquipmentPiece): boolean {
+  // Powered staves all have formula-based max hits (e.g. Tumeken's shadow
+  // ×3 magic_str gear, Sanguinesti's high accuracy, Trident of the swamp's
+  // floor(magic/3) base) that aren't reflected in `bonuses.magic_str` or
+  // `offensive.magic`. The heuristic ranks them well below Kodai wand etc.
+  // even when they're the actual BiS — Tumeken's shadow on Kree'arra was
+  // the user-reported case. Include the whole category unconditionally.
+  if (piece.category === 'Powered Staff') return true;
   return SYNERGY_FORCE_INCLUDE.some((re) => re.test(piece.name));
 }
 
