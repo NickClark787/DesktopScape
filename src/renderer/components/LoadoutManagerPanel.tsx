@@ -7,6 +7,14 @@ interface Props {
   /** Live equipment list, used to resolve snapshot.equipmentIds → pieces for the preview strip. */
   equipment: EquipmentPiece[];
   saved: Record<string, LoadoutSnapshot>;
+  /**
+   * Name of the loadout currently reflected in app state, or null when the
+   * state has been edited away from a saved snapshot. Drives the "Active"
+   * badge so users see at a glance which saved loadout they're viewing.
+   * Disappears the moment a destructive action invalidates the match
+   * (style switch, gear swap, optimizer run).
+   */
+  activeName: string | null;
   onSave: (name: string) => void;
   onLoad: (name: string) => void;
   onDelete: (name: string) => void;
@@ -30,7 +38,7 @@ function fmtAge(ts: number): string {
   return `${d}d ago`;
 }
 
-export function LoadoutManagerPanel({ equipment, saved, onSave, onLoad, onDelete }: Props) {
+export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLoad, onDelete }: Props) {
   const [name, setName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -88,6 +96,7 @@ export function LoadoutManagerPanel({ equipment, saved, onSave, onLoad, onDelete
           <div className="flex flex-col gap-1.5 max-h-60 overflow-auto">
             {entries.map(([key, snap]) => {
               const isConfirming = confirmDelete === key;
+              const isActive = key === activeName;
               const slotCount = Object.keys(snap.loadout.equipmentIds).length;
               // Resolve snapshot IDs to live pieces. Items removed from upstream
               // data will silently drop out of the strip — same fault-tolerance
@@ -98,11 +107,26 @@ export function LoadoutManagerPanel({ equipment, saved, onSave, onLoad, onDelete
               return (
                 <div
                   key={key}
-                  className="flex flex-col gap-1.5 px-2 py-1.5 rounded bg-bg-raised border border-border"
+                  className={[
+                    'flex flex-col gap-1.5 px-2 py-1.5 rounded bg-bg-raised border',
+                    // Gold border on the active row makes it visually pop without
+                    // adding a separate badge column. The store clears
+                    // loadedLoadoutName the moment any destructive action runs,
+                    // so the gold border vanishing IS the "your loadout was just
+                    // wiped" feedback.
+                    isActive ? 'border-accent/70' : 'border-border',
+                  ].join(' ')}
                 >
                   <div className="flex items-center gap-2">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm truncate" title={key}>{key}</div>
+                      <div className="text-sm truncate flex items-center gap-1.5" title={key}>
+                        <span className="truncate">{key}</span>
+                        {isActive && (
+                          <span className="text-[10px] uppercase tracking-wider text-accent shrink-0 px-1 rounded border border-accent/50 bg-accent/10">
+                            Active
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-text-faint">
                         {snap.style} · {slotCount} slot{slotCount === 1 ? '' : 's'} · {fmtAge(snap.savedAt)}
                       </div>

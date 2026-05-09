@@ -104,6 +104,14 @@ export interface AppState {
   setOwnedFilterEnabled: (v: boolean) => void;
   /** Saved loadouts keyed by user-supplied name. Persisted to localStorage. */
   savedLoadouts: Record<string, LoadoutSnapshot>;
+  /**
+   * Name of the saved loadout the current state was last hydrated from, or
+   * null when the current state was hand-edited / auto-optimized / freshly
+   * loaded. Drives the "Active" badge in LoadoutManagerPanel so users have
+   * visual feedback when destructive actions (style change, manual swap,
+   * Find best setup) silently invalidate a loaded loadout.
+   */
+  loadedLoadoutName: string | null;
   saveLoadout: (name: string) => void;
   loadLoadout: (name: string) => void;
   deleteLoadout: (name: string) => void;
@@ -161,6 +169,7 @@ export const useApp = create<AppState>((set) => ({
   clearOwned: () => { saveOwnedIds(new Set()); set({ ownedIds: new Set() }); },
   setOwnedFilterEnabled: (v) => { saveOwnedFilterEnabled(v); set({ ownedFilterEnabled: v }); },
   savedLoadouts: loadSavedLoadouts(),
+  loadedLoadoutName: null,
   saveLoadout: (name) => set((st) => {
     const trimmed = name.trim();
     if (!trimmed) return {};
@@ -191,7 +200,9 @@ export const useApp = create<AppState>((set) => ({
     };
     const next = { ...st.savedLoadouts, [trimmed]: snap };
     persistSavedLoadouts(next);
-    return { savedLoadouts: next };
+    // Saving from the current state means the saved version IS the current
+    // state — set the active badge to the just-saved name.
+    return { savedLoadouts: next, loadedLoadoutName: trimmed };
   }),
   loadLoadout: (name) => set((st) => {
     const snap = st.savedLoadouts[name];
@@ -208,6 +219,7 @@ export const useApp = create<AppState>((set) => ({
       selectedMonsterId: snap.selectedMonsterId,
       stanceOverride: snap.stanceOverride,
       attackStyleOverride: snap.attackStyleOverride,
+      loadedLoadoutName: name,
       loadout: {
         style: snap.loadout.style,
         attackStyle: snap.loadout.attackStyle,
@@ -227,8 +239,11 @@ export const useApp = create<AppState>((set) => ({
     if (!(name in st.savedLoadouts)) return {};
     const next = { ...st.savedLoadouts };
     delete next[name];
+    // If the user deleted the loadout that was active, the badge no longer
+    // points to anything real — drop it.
+    const loadedLoadoutName = st.loadedLoadoutName === name ? null : st.loadedLoadoutName;
     persistSavedLoadouts(next);
-    return { savedLoadouts: next };
+    return { savedLoadouts: next, loadedLoadoutName };
   }),
   loadout: {
     style: 'melee',
@@ -245,6 +260,10 @@ export const useApp = create<AppState>((set) => ({
     style: s,
     stanceOverride: null,
     attackStyleOverride: null,
+    // Equipment wipe means the loaded snapshot no longer matches current
+    // state — drop the active badge so the user sees that their loadout
+    // is no longer the displayed one.
+    loadedLoadoutName: null,
     loadout: {
       ...st.loadout,
       style: s,
@@ -271,7 +290,13 @@ export const useApp = create<AppState>((set) => ({
   setSpell: (v) => set((st) => ({ loadout: { ...st.loadout, spell: v } })),
   setRaidScaling: (v) => set((st) => ({ loadout: { ...st.loadout, raidScaling: v } })),
   hydrate: ({ equipment, monsters, meta }) => set({ equipment, monsters, loading: false, dataMeta: meta ?? null }),
-  setEquipment: (eq) => set((st) => ({ loadout: { ...st.loadout, equipment: eq } })),
+  // Both setters drop loadedLoadoutName — once the equipment is mutated by
+  // either the optimizer (setEquipment) or a manual picker swap (setSlot),
+  // the displayed loadout is no longer the one the user loaded.
+  setEquipment: (eq) => set((st) => ({
+    loadout: { ...st.loadout, equipment: eq },
+    loadedLoadoutName: null,
+  })),
   setSlot: (slot, piece) => set((st) => {
     const next = { ...st.loadout.equipment };
     if (piece === null) {
@@ -283,6 +308,6 @@ export const useApp = create<AppState>((set) => ({
       if (slot === 'weapon' && piece.isTwoHanded) next.shield = null;
       else if (slot === 'shield' && next.weapon?.isTwoHanded) next.weapon = null;
     }
-    return { loadout: { ...st.loadout, equipment: next } };
+    return { loadout: { ...st.loadout, equipment: next }, loadedLoadoutName: null };
   }),
 }));

@@ -237,6 +237,7 @@ export default function App() {
             <LoadoutManagerPanel
               equipment={state.equipment}
               saved={state.savedLoadouts}
+              activeName={state.loadedLoadoutName}
               onSave={state.saveLoadout}
               onLoad={state.loadLoadout}
               onDelete={state.deleteLoadout}
