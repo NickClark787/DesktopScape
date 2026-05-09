@@ -67,6 +67,24 @@ export default function App() {
     state.setStyle(s);
   }
 
+  /**
+   * Monster-pick handler. Same staleness risk as handleStyleChange — the
+   * candidate's DPS, accuracy, and effects are all monster-specific (TBow
+   * scales off magic level, Salve fires on undead, raid scaling math
+   * differs per fight), so a stale candidate displayed against a new
+   * monster is actively misleading. The optimizer needs to be re-run
+   * to refresh; clearing the candidate forces the empty/loadout state
+   * until the user does so.
+   *
+   * Equipment is *not* cleared here — gear that worked on Vorkath might
+   * still be the user's intent for Zulrah, and the picker's per-row DPS
+   * column will recompute against the new target on its own.
+   */
+  function handleMonsterSelect(id: number) {
+    setCandidate(null);
+    state.setMonster(id);
+  }
+
   async function runOptimizer() {
     if (!selectedMonster) return;
     setComputing(true);
@@ -193,7 +211,7 @@ export default function App() {
             <MonsterPicker
               monsters={state.monsters}
               selectedId={state.selectedMonsterId}
-              onSelect={state.setMonster}
+              onSelect={handleMonsterSelect}
             />
             <RaidPanel
               value={state.loadout.raidScaling}
