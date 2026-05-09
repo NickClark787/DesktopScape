@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { IPC, CDN_JSON } from '../shared/constants';
+import { patchEquipmentData } from '../shared/dataPatches';
+import type { EquipmentPiece } from '../shared/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -105,8 +107,14 @@ app.whenReady().then(() => {
       // canonical "data refreshed" timestamp.
       dataFileMeta('equipment.json'),
     ]);
+    // Patch known-bad upstream entries (see shared/dataPatches.ts) before
+    // returning to the renderer. Done here rather than in the renderer so
+    // every consumer (calcDps, optimizer, picker UI, validator) sees the
+    // corrected values.
+    const equipmentData: EquipmentPiece[] = JSON.parse(equipment);
+    patchEquipmentData(equipmentData);
     return {
-      equipment: JSON.parse(equipment),
+      equipment: equipmentData,
       monsters: JSON.parse(monsters),
       spells: JSON.parse(spells),
       meta,

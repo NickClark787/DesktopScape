@@ -14,9 +14,11 @@
 
 import { readFile } from 'node:fs/promises';
 import { calcDps, stancesForStyle } from '../src/engine/formulas.ts';
+import { patchEquipmentData } from '../src/shared/dataPatches.ts';
 import type { Monster, EquipmentPiece, PlayerLoadout, Prayers, Potions, WeaponStance } from '../src/shared/types.ts';
 
 const equipment: EquipmentPiece[] = JSON.parse(await readFile('resources/data/equipment.json', 'utf8'));
+patchEquipmentData(equipment);
 const monsters: Monster[] = JSON.parse(await readFile('resources/data/monsters.json', 'utf8'));
 
 function findPiece(name: string, version?: string): EquipmentPiece {
