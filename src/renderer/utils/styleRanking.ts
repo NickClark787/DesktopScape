@@ -38,16 +38,32 @@ export function styleScores(monster: Monster): Record<CombatStyle, number> {
 }
 
 /**
- * Best-to-worst ordering of combat styles vs the given monster, by the
- * heuristic above. Returns the default melee/ranged/magic order when no
- * monster is selected so the tab strip doesn't shuffle on app load.
+ * Best-to-worst ordering of combat styles vs the given monster.
  *
- * Sort is stable when scores tie — the relative order of tied styles
- * follows the input order, which is then DEFAULT_STYLE_ORDER. Keeps
- * unselected-monster and tied-defence views from feeling jittery.
+ * When `dpsByStyle` is provided (i.e. the optimizer has been run for at
+ * least one style), the ranking is by actual computed DPS, descending.
+ * That's the source of truth — the defence heuristic was always a
+ * shortcut for what the optimizer actually proves.
+ *
+ * Without DPS data we fall back to the defence heuristic from
+ * `styleScores`. With no monster, the canonical melee/ranged/magic
+ * order returns so the tab strip doesn't shuffle on app load.
+ *
+ * Sort is stable when scores tie — relative order follows input order,
+ * which is DEFAULT_STYLE_ORDER. Keeps tied-DPS views from jittering.
  */
-export function rankStyles(monster: Monster | null): CombatStyle[] {
+export function rankStyles(
+  monster: Monster | null,
+  dpsByStyle?: Partial<Record<CombatStyle, number>>,
+): CombatStyle[] {
   if (!monster) return [...DEFAULT_STYLE_ORDER];
+  // Prefer actual DPS when we have it for at least one style. Styles
+  // without a DPS entry fall to -Infinity, sinking to the bottom.
+  if (dpsByStyle && Object.keys(dpsByStyle).length > 0) {
+    return [...DEFAULT_STYLE_ORDER].sort(
+      (a, b) => (dpsByStyle[b] ?? -Infinity) - (dpsByStyle[a] ?? -Infinity),
+    );
+  }
   const scores = styleScores(monster);
   return [...DEFAULT_STYLE_ORDER].sort((a, b) => scores[a] - scores[b]);
 }

@@ -260,23 +260,14 @@ export const useApp = create<AppState>((set) => ({
     style: s,
     stanceOverride: null,
     attackStyleOverride: null,
-    // Equipment wipe means the loaded snapshot no longer matches current
-    // state — drop the active badge so the user sees that their loadout
-    // is no longer the displayed one.
-    loadedLoadoutName: null,
     loadout: {
       ...st.loadout,
       style: s,
       attackStyle: s === 'melee' ? 'slash' : s,
-      // Equipment from the prior style is invalid for the new one — a melee
-      // weapon doesn't make sense once the user is on the Ranged tab. Wipe
-      // so the gear grid resets and the picker's substitution baseline is
-      // clean. The user gets the empty grid + "click any slot" nudge, or
-      // can re-run Find best setup to repopulate.
-      equipment: {},
-      // Stance is also weapon-coupled; unset so the engine picks the
-      // default for whatever weapon gets equipped next.
-      stance: undefined,
+      // Equipment is NOT wiped here — App.handleStyleChange immediately
+      // calls setEquipment with the cached candidate's gear (or {} when
+      // the cache is empty). This keeps the per-style cache flow as the
+      // single source of truth for "what gear shows on this tab".
     },
   })),
   setMonster: (id) => set({ selectedMonsterId: id }),

@@ -16,16 +16,25 @@ import { GearPickerModal } from './components/GearPickerModal';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import { calcDps } from '../engine/formulas';
 import { rankStyles, styleScores } from './utils/styleRanking';
-import type { AttackType, BestSetupCandidate, EquipmentPiece, EquipmentSlot, WeaponStance } from '@shared/types';
+import type { AttackType, BestSetupCandidate, CombatStyle, EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
+
+/** Per-style cache of optimizer results. One Find-best-setup click fills
+ *  all three slots so the user can flip through tabs without recomputing. */
+type CandidateCache = Partial<Record<CombatStyle, BestSetupCandidate>>;
 
 export default function App() {
   const state = useApp();
-  const [candidate, setCandidate] = useState<BestSetupCandidate | null>(null);
+  const [candidates, setCandidates] = useState<CandidateCache>({});
   const [computing, setComputing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string>('');
   const [pickerSlot, setPickerSlot] = useState<Exclude<EquipmentSlot, '2h'> | null>(null);
+
+  // The candidate displayed in the metrics block — whatever's cached for
+  // the currently-selected style. Switching tabs flips this without any
+  // recompute; running Find best setup repopulates all three at once.
+  const candidate = candidates[state.style] ?? null;
 
   // Load data on mount
   useEffect(() => {
@@ -41,78 +50,150 @@ export default function App() {
     [state.monsters, state.selectedMonsterId],
   );
 
+  // Per-style DPS for the tabs — fed by the candidate cache. Empty when
+  // the user hasn't run the optimizer yet for the current monster.
+  const dpsByStyle = useMemo<Partial<Record<CombatStyle, number>>>(() => ({
+    melee: candidates.melee?.result.dps,
+    ranged: candidates.ranged?.result.dps,
+    magic: candidates.magic?.result.dps,
+  }), [candidates]);
+
   // Style-tab order, best-to-worst against the selected monster.
-  // When no monster is selected the canonical order is returned, so the tab
-  // strip doesn't shuffle on first load.
-  const styleOrder = useMemo(() => rankStyles(selectedMonster), [selectedMonster]);
+  // Pre-run: defence heuristic. Post-run: actual DPS from the cache.
+  // When no monster is selected the canonical order is returned, so the
+  // tab strip doesn't shuffle on first load.
+  const styleOrder = useMemo(() => rankStyles(selectedMonster, dpsByStyle), [selectedMonster, dpsByStyle]);
   const styleLeaderHint = useMemo(() => {
     if (!selectedMonster) return undefined;
-    const scores = styleScores(selectedMonster);
     const leader = styleOrder[0];
-    // Surface the actual defence number so the recommendation is auditable —
-    // "best because lowest magic def" is more trustworthy than a bare badge.
+    const dps = dpsByStyle[leader];
+    if (dps !== undefined) {
+      // Post-run: name the actual winner with its DPS number.
+      return `Best vs ${selectedMonster.name} — ${leader} computed at ${dps.toFixed(2)} DPS`;
+    }
+    // Pre-run: fall back to the defence-heuristic explanation.
+    const scores = styleScores(selectedMonster);
     return `Best vs ${selectedMonster.name} — ${leader} faces lowest defence (${scores[leader]})`;
-  }, [selectedMonster, styleOrder]);
+  }, [selectedMonster, styleOrder, dpsByStyle]);
 
   /**
-   * Style-tab click handler. The store's setStyle wipes the loadout's
-   * equipment + stance (a melee weapon doesn't carry into Ranged), but the
-   * displayed candidate lives in this component's local state and would
-   * otherwise persist — leaving stale DPS metrics on screen for the wrong
-   * style. Clearing both in the same handler keeps the UI honest after
-   * a tab click. React 18 batches these so the re-render is single-frame.
+   * Style-tab click handler. With per-style caching, switching tabs is
+   * cheap: we look up the cached candidate for the new style and push its
+   * equipment (and spell, for magic) to the store so the gear grid + DPS
+   * metrics update instantly. No optimizer re-run needed — Find best setup
+   * already populated all three styles in one pass.
+   *
+   * If the user hasn't run the optimizer yet (or ran it for a different
+   * monster), the cache is empty for that style — push an empty equipment
+   * map so the grid resets to "click any slot" mode.
    */
-  function handleStyleChange(s: typeof state.style) {
-    setCandidate(null);
+  function handleStyleChange(s: CombatStyle) {
     state.setStyle(s);
+    const cached = candidates[s];
+    if (cached) {
+      state.setEquipment(cached.equipment);
+      if (s === 'magic' && cached.spell !== undefined) state.setSpell(cached.spell);
+      if (cached.stance !== undefined) state.setStance(cached.stance);
+    } else {
+      state.setEquipment({});
+    }
   }
 
   /**
-   * Monster-pick handler. Same staleness risk as handleStyleChange — the
-   * candidate's DPS, accuracy, and effects are all monster-specific (TBow
-   * scales off magic level, Salve fires on undead, raid scaling math
-   * differs per fight), so a stale candidate displayed against a new
-   * monster is actively misleading. The optimizer needs to be re-run
-   * to refresh; clearing the candidate forces the empty/loadout state
-   * until the user does so.
+   * Monster-pick handler. Every cached candidate's DPS / accuracy / effects
+   * are monster-specific (TBow scales off magic level, Salve fires on
+   * undead, raid scaling differs per fight), so swapping the target
+   * invalidates all three style caches. The user re-runs Find best setup
+   * to repopulate.
    *
-   * Equipment is *not* cleared here — gear that worked on Vorkath might
-   * still be the user's intent for Zulrah, and the picker's per-row DPS
-   * column will recompute against the new target on its own.
+   * Equipment is *not* cleared — gear that worked on Vorkath might still
+   * be the user's intent for Zulrah, and the picker's per-row DPS column
+   * will recompute against the new target on its own.
    */
   function handleMonsterSelect(id: number) {
-    setCandidate(null);
+    setCandidates({});
     state.setMonster(id);
   }
 
+  /**
+   * Run the optimizer for one style against the selected monster. Factored
+   * out so runOptimizer can iterate cleanly across all three styles, and
+   * so each call site uses the same option-flow (overrides, owned filter,
+   * style-coupled attackStyle defaults).
+   *
+   * Force-overrides:
+   * - forceStance flows to all three style runs; engines that don't use
+   *   the user's pinned stance (e.g. melee aggressive on a ranged run)
+   *   silently fall back to defaults.
+   * - forceAttackStyle is melee-only — only the melee path consumes it.
+   */
+  function runOptimizerForStyle(
+    style: CombatStyle,
+    base: PlayerLoadout,
+    monster: Monster,
+    forceStance: WeaponStance | undefined,
+    forceAttackStyle: AttackType | undefined,
+    ownedOnly: Set<number> | null,
+  ): BestSetupCandidate | null {
+    const styled: PlayerLoadout = { ...base, style, attackStyle: style === 'melee' ? 'slash' : style };
+    if (style === 'melee') {
+      return findBestMeleeSetup(styled, monster, state.equipment, {
+        shortlistPerSlot: 5,
+        forceStance,
+        ownedOnly,
+        forceAttackStyle: (forceAttackStyle as 'stab' | 'slash' | 'crush') ?? undefined,
+      });
+    }
+    if (style === 'magic') {
+      return findBestMagicSetup(styled, monster, state.equipment, {
+        shortlistPerSlot: 5,
+        forceStance,
+        ownedOnly,
+      });
+    }
+    return findBestSetup(styled, monster, state.equipment, {
+      style, attackStyle: style, shortlistPerSlot: 5, forceStance, ownedOnly,
+    });
+  }
+
+  /**
+   * Compute the best setup for ALL three styles in one pass. The user
+   * pays a one-time ~1-1.5s wait, then can flip between the Melee /
+   * Ranged / Magic tabs instantly — each tab serves a cached candidate
+   * computed against the same monster + skills + prayers + potions.
+   *
+   * Sequential rather than parallel because each call is sync straight-
+   * line work (no I/O); a Promise.all wouldn't actually overlap. We yield
+   * to a frame between runs so the "Calculating…" spinner repaints.
+   */
   async function runOptimizer() {
     if (!selectedMonster) return;
     setComputing(true);
-    setCandidate(null);
-    // Yield to the paint before running the sync search.
+    setCandidates({});
     await new Promise((r) => requestAnimationFrame(() => r(null)));
+
     const forceStance = state.stanceOverride ?? undefined;
     const ownedOnly = state.ownedFilterEnabled ? state.ownedIds : null;
-    const result = state.style === 'melee'
-      ? findBestMeleeSetup(state.loadout, selectedMonster, state.equipment, {
-          shortlistPerSlot: 5,
-          forceStance,
-          ownedOnly,
-          forceAttackStyle: state.attackStyleOverride ?? undefined,
-        })
-      : state.style === 'magic'
-      ? findBestMagicSetup(state.loadout, selectedMonster, state.equipment, { shortlistPerSlot: 5, forceStance, ownedOnly })
-      : findBestSetup(
-          { ...state.loadout, style: state.style, attackStyle: state.style },
-          selectedMonster,
-          state.equipment,
-          { style: state.style, attackStyle: state.style, shortlistPerSlot: 5, forceStance, ownedOnly },
-        );
-    if (result) {
-      state.setEquipment(result.equipment);
-      if (result.style === 'magic' && result.spell !== undefined) state.setSpell(result.spell);
+    const forceAttackStyle = state.attackStyleOverride ?? undefined;
+
+    const next: CandidateCache = {};
+    for (const s of ['melee', 'ranged', 'magic'] as const) {
+      const r = runOptimizerForStyle(s, state.loadout, selectedMonster, forceStance, forceAttackStyle, ownedOnly);
+      if (r) next[s] = r;
+      // Yield between runs so the spinner gets a chance to repaint and
+      // a long melee run doesn't make the app feel frozen.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
     }
-    setCandidate(result);
+
+    setCandidates(next);
+    // Push the currently-selected style's pick into the store so the gear
+    // grid populates immediately. Other styles are cached for tab flips.
+    const cur = next[state.style];
+    if (cur) {
+      state.setEquipment(cur.equipment);
+      if (cur.style === 'magic' && cur.spell !== undefined) state.setSpell(cur.spell);
+      if (cur.stance !== undefined) state.setStance(cur.stance);
+    }
     setComputing(false);
   }
 
@@ -160,14 +241,17 @@ export default function App() {
       equipment: nextEquipment,
     };
     const result = calcDps(nextLoadout, selectedMonster);
-    setCandidate({
+    // Update only the current style's cache — the other styles' cached
+    // candidates are still valid (this swap doesn't affect them).
+    const newCandidate: BestSetupCandidate = {
       equipment: nextEquipment,
       result,
       style: state.style,
       attackStyle: nextLoadout.attackStyle,
       spell: state.style === 'magic' ? state.loadout.spell : undefined,
       stance: nextLoadout.stance,
-    });
+    };
+    setCandidates((c) => ({ ...c, [state.style]: newCandidate }));
   }
 
   async function refreshData() {
@@ -250,6 +334,7 @@ export default function App() {
                 onChange={handleStyleChange}
                 order={styleOrder}
                 leaderHint={styleLeaderHint}
+                dpsByStyle={dpsByStyle}
               />
               <button
                 className="btn btn-primary"
