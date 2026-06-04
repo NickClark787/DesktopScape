@@ -37,6 +37,7 @@ import {
   demonbaneMult,
   dragonHunterMult,
   efaritayAccuracyBonus,
+  eliteVoidMageMagicStr,
   harmonisedSpeedOverride,
   inquisitorBonus,
   bloodMoonSpeedReduction,
@@ -232,8 +233,10 @@ function stanceBonus(style: CombatStyle, stance: WeaponStance): StanceBonus {
     // 'rapid' gives no stat bonus but a faster weapon speed (handled below).
     else if (stance === 'longrange') bonus.def = 3;
   } else if (style === 'magic') {
-    // 'accurate' adds +3 magic; 'longrange' adds +1 def and +3 magic. 'defensive casting' adds +3 def.
-    bonus.magic = 3;
+    // Magic 'accurate'/autocast adds +2 hidden magic levels (NOT +3 like
+    // melee/ranged accurate). Matches osrs-dps-calc: effective magic =
+    // floor(level*prayer) + (accurate ? 2 : 0) + 9.
+    if (stance === 'accurate') bonus.magic = 2;
   }
   return bonus;
 }
@@ -329,6 +332,31 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       }
     }
 
+    // Snapshot the unmodified base max hit & attack roll. The Obsidian set
+    // bonus is a FLAT +10% of these *base* values (added below), so it must be
+    // captured before any multiplier touches them (matches the wiki calc's use
+    // of `baseMax` / `baseRoll` in the melee getters, PlayerVsNPCCalc:253/409).
+    const meleeBaseMax = maxHit;
+    const meleeBaseRoll = attackRoll;
+
+    // Target-type multiplier (Salve amulet / Amulet of avarice / Slayer-helm
+    // black mask) is the FIRST equipment bonus the wiki calc applies to melee,
+    // ahead of obsidian and the wilderness rev-weapon buff (PlayerVsNPCCalc:
+    // 242-251 acc, 391-400 dmg). Applying it here — instead of in the shared
+    // block far below — is what keeps avarice-before-obsidian and avarice-
+    // before-wilderness ordering correct (otherwise an odd base hit drifts +1).
+    const mtb = targetTypeBonus(loadout, monster, 'melee');
+    maxHit = Math.trunc(maxHit * mtb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * mtb.accMult);
+    if (mtb.dmgMult !== 1 || mtb.accMult !== 1) {
+      const neck = loadout.equipment.neck;
+      const head = loadout.equipment.head;
+      const src = neck && /^(Salve amulet|Amulet of avarice)/i.test(neck.name) ? neck.name
+        : head && /^(Slayer helmet|Black mask)/i.test(head.name) ? head.name
+        : 'Target-type bonus';
+      pushIfFired(effects, src, mtb);
+    }
+
     // Demonbane weapons (Arclight / Emberlight / Darklight) vs demons.
     const dm = demonbaneMult(weapon, monster);
     maxHit = Math.trunc(maxHit * dm.dmgMult);
@@ -360,11 +388,19 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     attackRoll = Math.trunc(attackRoll * dh.accMult);
     if (weapon) pushIfFired(effects, weapon.name, dh, 'vs dragon');
 
-    // Obsidian armour set + Berserker necklace synergy with obsidian melee weapons.
+    // Obsidian armour set: +10% of the BASE max hit & attack roll, added as a
+    // FLAT bonus (trunc(base/10)) rather than a multiplier, and after the
+    // target-type multiplier above — matches the wiki calc
+    // (PlayerVsNPCCalc:253-255 acc, 408-411 dmg). Applying it as ×1.1 over the
+    // avarice-boosted hit over-counts by 1 on odd base hits.
     const ob = obsidianArmourBonus(loadout.equipment);
-    maxHit = Math.trunc(maxHit * ob.dmgMult);
-    attackRoll = Math.trunc(attackRoll * ob.accMult);
-    pushIfFired(effects, 'Obsidian set', ob);
+    if (ob.dmgMult !== 1 || ob.accMult !== 1) {
+      const obDmg = Math.trunc(meleeBaseMax / 10);
+      const obAcc = Math.trunc(meleeBaseRoll / 10);
+      maxHit += obDmg;
+      attackRoll += obAcc;
+      effects.push({ name: 'Obsidian set', detail: `+${obDmg} max hit, +${obAcc} acc (10% of base)` });
+    }
     const bn = berserkerNeckBonus(loadout.equipment);
     maxHit = Math.trunc(maxHit * bn.dmgMult);
     pushIfFired(effects, 'Berserker necklace', bn);
@@ -469,23 +505,86 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       }
     }
 
-    // 2) Apply magic damage bonus — additive in tenths-of-a-percent.
-    //    maxHit = baseMax + trunc(baseMax * magicDmgBonus / 1000)
-    // Magic damage bonus is gear-only — no standard prayer contributes.
-    // Bonus is in tenths-of-a-percent (so 30 = +3%).
-    const magicDmgBonus = geartMagicStr;
-    maxHit = baseMax + Math.trunc((baseMax * magicDmgBonus) / 1000);
-
-    // Chaos gauntlets add a flat +3 to max hit on Bolt spells, BEFORE the
-    // book/staff multiplier so Tome of fire scales the +3 as well. Uses
-    // effectiveSpell so a powered staff with "Fire Bolt" loaded doesn't
-    // wrongly get the +3.
+    // 2) Chaos gauntlets add a flat +3 on Bolt spells, applied BEFORE the magic
+    //    damage % (the wiki calc adds +3 to the max hit, then applies the
+    //    combined magic damage bonus). effectiveSpell gate so a powered staff
+    //    with a Bolt loaded doesn't get it.
     const cgBonus = chaosGauntletsBonus(loadout.equipment.hands, effectiveSpell);
-    maxHit += cgBonus;
+    const mh = baseMax + cgBonus;
     if (cgBonus > 0) effects.push({ name: 'Chaos gauntlets', detail: `+${cgBonus} max hit (Bolt spell)` });
 
-    // 3) Apply weapon/book multiplier (Tome of fire ×1.5, Smoke staff ×1.1, …).
-    //    Spell-only — powered staves don't use spells, so bonus is identity.
+    // 3) Magic damage % bonus — ADDITIVE in tenths-of-a-percent, combining gear
+    //    magic damage with Salve / Amulet of avarice (the wiki calc folds these
+    //    into one bonus applied once, NOT a separate end multiplier — applying
+    //    salve as a trailing ×1.2 over-stacks it against the gear bonus). Salve
+    //    and avarice are mutually exclusive and take precedence over the
+    //    Slayer-helm multiplier. No standard prayer contributes magic damage.
+    let magicDmgBonus = geartMagicStr;
+    // Elite Void mage full set: flat +5% magic damage, added AFTER the shadow
+    // ×3 (geartMagicStr already includes the triple), matching the wiki calc's
+    // Equipment.ts order. Not a trailing multiplier.
+    const eliteVoidStr = eliteVoidMageMagicStr(loadout.equipment);
+    if (eliteVoidStr > 0) {
+      magicDmgBonus += eliteVoidStr;
+      effects.push({ name: 'Elite void (magic)', detail: '+5% magic dmg (additive)' });
+    }
+    let magicSlayerMult = 1;
+    const mNeck = loadout.equipment.neck ?? null;
+    const mHead = loadout.equipment.head ?? null;
+    const undeadTarget = (monster.attributes || []).some((a) => a.toLowerCase() === 'undead');
+    if (mNeck && /^Amulet of avarice/i.test(mNeck.name) && monster.name.startsWith('Revenant')) {
+      magicDmgBonus += 200;
+      attackRoll = Math.trunc(attackRoll * 1.2);
+      effects.push({ name: 'Amulet of avarice', detail: '+20% magic dmg & acc vs Revenant' });
+    } else if (mNeck && /^Salve amulet\(ei\)/i.test(mNeck.name) && undeadTarget) {
+      magicDmgBonus += 200;
+      attackRoll = Math.trunc(attackRoll * 1.2);
+      effects.push({ name: mNeck.name, detail: '+20% magic dmg & acc vs undead' });
+    } else if (mNeck && /^Salve amulet\(i\)/i.test(mNeck.name) && undeadTarget) {
+      magicDmgBonus += 150;
+      attackRoll = Math.trunc(attackRoll * 1.15);
+      effects.push({ name: mNeck.name, detail: '+15% magic dmg & acc vs undead' });
+    } else if (
+      loadout.onSlayerTask && mHead && monster.is_slayer_monster
+      && (/^Slayer helmet\s*\(i\)/i.test(mHead.name) || /^Black mask\s*\(i\)/i.test(mHead.name))
+    ) {
+      magicSlayerMult = 23 / 20; // +15%, multiplicative (after the additive bonus)
+    }
+    maxHit = mh + Math.trunc((mh * magicDmgBonus) / 1000);
+    if (magicSlayerMult !== 1) {
+      maxHit = Math.trunc(maxHit * magicSlayerMult);
+      attackRoll = Math.trunc(attackRoll * magicSlayerMult);
+      pushIfFired(effects, mHead!.name, { dmgMult: magicSlayerMult, accMult: magicSlayerMult });
+    }
+
+    // Monster elemental weakness — when the cast spell's element matches a
+    // weakness in the data (e.g. Kree'arra weak to air at severity 30), the
+    // wiki calc adds a FLAT bonus of trunc(baseMax × severity/100) to the max
+    // hit, where baseMax is the post-chaos, pre-magic-damage hit (`mh`). This
+    // is additive — NOT a (1 + severity/100) multiplier on the already-boosted
+    // hit — and is applied BEFORE the elemental tome multiplier
+    // (PlayerVsNPCCalc:1104-1120). Accuracy gets the proportional multiplier.
+    //
+    // Uses effectiveSpell — see the weaponCastsSpell gate above for why
+    // powered staves don't pick up the matching-element weakness boost.
+    if (
+      effectiveSpell?.element
+      && monster.weakness?.element === effectiveSpell.element
+      && monster.weakness.severity
+    ) {
+      const sev = monster.weakness.severity;
+      maxHit += Math.trunc((mh * sev) / 100);
+      attackRoll = Math.trunc(attackRoll * (1 + sev / 100));
+      effects.push({
+        name: 'Elemental weakness',
+        detail: `${effectiveSpell.element} +${sev}% acc & +${Math.trunc((mh * sev) / 100)} dmg on ${monster.name}`,
+      });
+    }
+
+    // Elemental tome (Tome of fire/water/earth, +10% dmg) and other magic
+    // weapon multipliers. Applied AFTER the elemental-weakness bonus — the tome
+    // is the last max-hit step in the wiki calc (PlayerVsNPCCalc:1116). Spell-
+    // only: powered staves don't use spells, so the bonus is identity.
     const shield = loadout.equipment.shield ?? null;
     const mw = magicWeaponMult(weapon, shield, effectiveSpell);
     maxHit = Math.trunc(maxHit * mw.dmgMult);
@@ -495,34 +594,11 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       pushIfFired(effects, src, mw, effectiveSpell ? `on ${effectiveSpell.name}` : '');
     }
 
-    // Monster elemental weakness — when the cast spell's element matches a
-    // weakness the monster has in the data (e.g. Kree'arra weak to air at
-    // severity 30), both max hit and attack roll get a 1 + severity/100
-    // multiplier. Without this, the optimizer never picked Wind/Air spells
-    // for fight scenarios where they were obviously correct (Kree'arra,
-    // Smoke devil, etc).
-    //
-    // Uses effectiveSpell — see the weaponCastsSpell gate above for why
-    // powered staves don't pick up the matching-element weakness boost.
-    if (
-      effectiveSpell?.element
-      && monster.weakness?.element === effectiveSpell.element
-      && monster.weakness.severity
-    ) {
-      const mult = 1 + monster.weakness.severity / 100;
-      maxHit = Math.trunc(maxHit * mult);
-      attackRoll = Math.trunc(attackRoll * mult);
-      effects.push({
-        name: 'Elemental weakness',
-        detail: `${effectiveSpell.element} +${monster.weakness.severity}% dmg & acc on ${monster.name}`,
-      });
-    }
-
-    // Void Knight / Elite Void — mage helm set.
+    // Void Knight / Elite Void mage — ACCURACY only (+45%). The elite set's
+    // damage bonus is folded into magicDmgBonus above (voidBonus dmgMult = 1).
     const vmg = voidBonus(loadout.equipment, 'magic');
-    maxHit = Math.trunc(maxHit * vmg.dmgMult);
     attackRoll = Math.trunc(attackRoll * vmg.accMult);
-    pushIfFired(effects, 'Void (magic)', vmg);
+    if (vmg.accMult !== 1) pushIfFired(effects, 'Void (magic)', vmg);
 
     // Virtus robes — per-piece bonus on ancient-spellbook spells. Uses
     // effectiveSpell so a powered staff with "Ice Barrage" loaded doesn't
@@ -549,18 +625,23 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   attackRoll = Math.trunc(attackRoll * efar);
   if (efar !== 1) effects.push({ name: "Efaritay's aid", detail: `${pct(efar, true)} acc vs vampyre` });
 
-  // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i)).
-  // Applied to max hit and attack roll across all styles.
-  const tb = targetTypeBonus(loadout, monster, style);
-  maxHit = Math.trunc(maxHit * tb.dmgMult);
-  attackRoll = Math.trunc(attackRoll * tb.accMult);
-  if (tb.dmgMult !== 1 || tb.accMult !== 1) {
-    const neck = loadout.equipment.neck;
-    const head = loadout.equipment.head;
-    const src = neck && /^Salve amulet/i.test(neck.name) ? neck.name
-      : head && /^(Slayer helmet|Black mask)/i.test(head.name) ? head.name
-      : 'Target-type bonus';
-    pushIfFired(effects, src, tb);
+  // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i), Amulet of
+  // avarice). RANGED only here — melee applies it early in its own block (so it
+  // precedes obsidian / wilderness, per the wiki calc order) and magic folds
+  // salve/avarice into the additive magic damage bonus inline above. Applying
+  // it again for those styles would double-count.
+  if (style === 'ranged') {
+    const tb = targetTypeBonus(loadout, monster, style);
+    maxHit = Math.trunc(maxHit * tb.dmgMult);
+    attackRoll = Math.trunc(attackRoll * tb.accMult);
+    if (tb.dmgMult !== 1 || tb.accMult !== 1) {
+      const neck = loadout.equipment.neck;
+      const head = loadout.equipment.head;
+      const src = neck && /^(Salve amulet|Amulet of avarice)/i.test(neck.name) ? neck.name
+        : head && /^(Slayer helmet|Black mask)/i.test(head.name) ? head.name
+        : 'Target-type bonus';
+      pushIfFired(effects, src, tb);
+    }
   }
 
   // Attack vs defence accuracy
@@ -668,6 +749,13 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   }
   const weaponSpeedSec = effectiveTicks * SECONDS_PER_TICK;
   const dps = weaponSpeedSec > 0 ? avgHit / weaponSpeedSec : 0;
+
+  // Osmumten's fang can only roll 15%-85% of its theoretical max, so the
+  // highest achievable hit is max - floor(0.15*max). The range is symmetric
+  // about max/2, so avgHit/DPS are unchanged — only the displayed max drops.
+  if (weapon?.name === "Osmumten's fang" && style === 'melee' && maxHit > 0) {
+    maxHit -= Math.floor(0.15 * maxHit);
+  }
 
   const hp = monster.skills.hp || 1;
   const ttkSeconds = dps > 0 ? hp / dps : Infinity;

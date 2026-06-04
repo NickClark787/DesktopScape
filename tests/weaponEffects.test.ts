@@ -20,6 +20,7 @@ import {
   dualMacuahuitlAvgPerSwing,
   eclipseMoonBurnAvgPerSwing,
   efaritayAccuracyBonus,
+  eliteVoidMageMagicStr,
   harmonisedSpeedOverride,
   inquisitorBonus,
   isDualMacuahuitl,
@@ -581,19 +582,25 @@ describe('void knight set', () => {
     expect(r).toEqual({ dmgMult: 1.10, accMult: 1.10 });
   });
 
-  it('elite void magic: +2.5% dmg / +45% acc', () => {
+  it('elite void magic: +45% acc via voidBonus; +50 magic_str applied separately', () => {
+    // Per the OSRS wiki calc (Equipment.ts L427-433 + BaseCalc.isWearingMagicVoid):
+    // ALL magic void gets ×29/20 (+45%) accuracy. The elite bonus is NOT a damage
+    // multiplier — it adds a flat +50 to the magic_str pool (≈+5% dmg), handled by
+    // eliteVoidMageMagicStr() in formulas.ts, so voidBonus.dmgMult stays 1.
     const r = voidBonus({ hands: gloves, head: mageHelm, body: eliteTop, legs: eliteRobe }, 'magic');
-    expect(r.dmgMult).toBeCloseTo(1.025, 6);
+    expect(r.dmgMult).toBeCloseTo(1.00, 6);
     expect(r.accMult).toBeCloseTo(1.45, 6);
+    expect(eliteVoidMageMagicStr({ hands: gloves, head: mageHelm, body: eliteTop, legs: eliteRobe })).toBe(50);
   });
 
-  it('regular void magic: +0% dmg / +30% acc (NOT 45 — that is elite-only)', () => {
-    // Regression guard for the bug fixed alongside this test: earlier code
-    // returned +45% accuracy for both regular and elite Void mage, silently
-    // buffing the regular set by 15% magic acc.
+  it('regular void magic: +45% acc, no +50 magic_str bonus', () => {
+    // Per BaseCalc.isWearingVoidRobes (accepts regular OR elite robes), the +45%
+    // magic accuracy applies to the regular set too — it is NOT elite-only.
+    // Only the +50 magic_str (eliteVoidMageMagicStr) is gated to the elite set.
     const r = voidBonus({ hands: gloves, head: mageHelm, body: top, legs: robe }, 'magic');
     expect(r.dmgMult).toBeCloseTo(1.00, 6);
-    expect(r.accMult).toBeCloseTo(1.30, 6);
+    expect(r.accMult).toBeCloseTo(1.45, 6);
+    expect(eliteVoidMageMagicStr({ hands: gloves, head: mageHelm, body: top, legs: robe })).toBe(0);
   });
 
   it('mismatched helm/style returns identity', () => {
@@ -648,12 +655,14 @@ describe('magic weapon multipliers', () => {
   const smokeStaff = piece({ name: 'Smoke battlestaff', slot: 'weapon' });
   const iceSceptre = piece({ name: 'Ice ancient sceptre', slot: 'weapon' });
 
-  it('Tome of fire: +50% dmg & acc on fire spells', () => {
+  it('Tome of fire: +10% dmg, +0% acc on fire spells', () => {
+    // Modern OSRS: Tome of fire gives +10% magic damage and no accuracy bonus
+    // (it used to be +50% to both; the wiki calc reflects the current values).
     const fireBolt = spellByName('Fire Bolt');
     expect(fireBolt).not.toBeNull();
     const r = magicWeaponMult(null, tomeOfFire, fireBolt);
-    expect(r.dmgMult).toBeCloseTo(1.5, 6);
-    expect(r.accMult).toBeCloseTo(1.5, 6);
+    expect(r.dmgMult).toBeCloseTo(1.1, 6);
+    expect(r.accMult).toBeCloseTo(1.0, 6);
   });
 
   it('Tome of fire: identity on non-fire spells', () => {
@@ -661,10 +670,12 @@ describe('magic weapon multipliers', () => {
     expect(magicWeaponMult(null, tomeOfFire, waterBolt)).toEqual({ dmgMult: 1, accMult: 1 });
   });
 
-  it('Tome of water: +20% dmg & acc on water spells', () => {
+  it('Tome of water: +10% dmg, +20% acc on water spells', () => {
+    // Modern OSRS: Tome of water gives +10% magic damage and +20% accuracy.
     const waterBolt = spellByName('Water Bolt');
     const r = magicWeaponMult(null, tomeOfWater, waterBolt);
-    expect(r.dmgMult).toBeCloseTo(1.2, 6);
+    expect(r.dmgMult).toBeCloseTo(1.1, 6);
+    expect(r.accMult).toBeCloseTo(1.2, 6);
   });
 
   it('Smoke battlestaff: +10% on standard-spellbook spells', () => {

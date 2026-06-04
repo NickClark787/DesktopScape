@@ -294,17 +294,17 @@ export function magicWeaponMult(
 ): MagicWeaponMult {
   if (!spell) return MAGIC_MULT_IDENTITY;
 
-  // Tome of fire — +50% dmg & accuracy for fire spells.
+  // Tomes give +10% damage on their matching element (post magic-rebalance).
+  // Only Tome of water also gives accuracy (+20%); fire/earth give no accuracy.
+  // Matches osrs-dps-calc (PlayerVsNPCCalc: dmg x11/10; water acc x6/5).
   if (shield && /^Tome of fire/i.test(shield.name) && spell.element === 'fire') {
-    return { dmgMult: 1.5, accMult: 1.5 };
+    return { dmgMult: 1.1, accMult: 1 };
   }
-  // Tome of water — +20% dmg & accuracy for water spells.
   if (shield && /^Tome of water/i.test(shield.name) && spell.element === 'water') {
-    return { dmgMult: 1.2, accMult: 1.2 };
+    return { dmgMult: 1.1, accMult: 1.2 };
   }
-  // Tome of earth — +20% dmg & accuracy for earth spells.
   if (shield && /^Tome of earth/i.test(shield.name) && spell.element === 'earth') {
-    return { dmgMult: 1.2, accMult: 1.2 };
+    return { dmgMult: 1.1, accMult: 1 };
   }
 
   if (!weapon) return MAGIC_MULT_IDENTITY;
@@ -672,15 +672,28 @@ export function voidBonus(
     return { dmgMult: dmg, accMult: 1.10 };
   }
   if (style === 'magic' && set.helm === 'mage') {
-    // Regular Void mage helm: +30% magic accuracy, no damage bonus.
-    // Elite Void mage helm: +45% magic accuracy + 2.5% magic damage.
-    // Earlier code returned +45% accuracy for both tiers, silently buffing
-    // the regular set by an extra 15% magic accuracy.
-    const dmg = set.tier === 'elite' ? 1.025 : 1.00;
-    const acc = set.tier === 'elite' ? 1.45 : 1.30;
-    return { dmgMult: dmg, accMult: acc };
+    // Full magic void (regular OR elite) gives +45% magic accuracy — the wiki
+    // calc applies ×29/20 to the effective level for any `isWearingMagicVoid`
+    // (BaseCalc.isWearingMagicVoid, PlayerVsNPCCalc:862). The damage side is
+    // NOT a trailing multiplier: the elite set instead adds a flat +5% magic
+    // damage to the gear `magic_str` bonus *after* the Tumeken's-shadow triple
+    // (Equipment.ts:428). That additive piece is handled by
+    // `eliteVoidMageMagicStr` in the formula, so here damage is identity.
+    return { dmgMult: 1, accMult: 1.45 };
   }
   return { dmgMult: 1, accMult: 1 };
+}
+
+/**
+ * Elite Void mage full set adds a flat +5% magic damage, expressed in the
+ * same tenths-of-a-percent units as `bonuses.magic_str` (i.e. +50). The wiki
+ * calc adds this to the aggregate magic damage bonus *after* the Tumeken's
+ * shadow ×3 multiplier and its 1000-cap, so it can push the total past +100%
+ * (Equipment.ts:405-433). Returns 0 unless the full elite mage set is worn.
+ */
+export function eliteVoidMageMagicStr(eq: PlayerLoadout['equipment']): number {
+  const set = detectVoidSet(eq);
+  return set && set.helm === 'mage' && set.tier === 'elite' ? 50 : 0;
 }
 
 // -------------------------------------------------------------------------
@@ -849,6 +862,7 @@ function isUndead(monster: Monster): boolean {
 const SALVE_RE = /^Salve amulet\s*(\(e\)|\(i\)|\(ei\))?$/i;
 const SLAYER_HELM_I_RE = /^Slayer helmet\s*\(i\)/i;
 const BLACK_MASK_I_RE = /^Black mask\s*\(i\)/i;
+const AVARICE_RE = /^Amulet of avarice/i;
 
 /**
  * Salve amulet / Slayer helm / Black mask damage and accuracy bonuses.
@@ -878,6 +892,13 @@ export function targetTypeBonus(
     if (!variant) {
       if (style === 'melee') return { dmgMult: 7 / 6, accMult: 7 / 6 };
     }
+  }
+
+  // Amulet of avarice — +20% dmg & acc vs Revenants (melee/ranged multiplicative,
+  // like salve). Magic avarice is handled additively in the magic branch of
+  // calcDps, so it's excluded here. Mutually exclusive with salve/slayer.
+  if (style !== 'magic' && neck && AVARICE_RE.test(neck.name) && monster.name.startsWith('Revenant')) {
+    return { dmgMult: 1.2, accMult: 1.2 };
   }
 
   if (loadout.onSlayerTask && head && (SLAYER_HELM_I_RE.test(head.name) || BLACK_MASK_I_RE.test(head.name))) {
