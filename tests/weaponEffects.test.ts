@@ -189,11 +189,19 @@ describe('crossbow bolt procs', () => {
     expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(14.40, 6);
   });
 
-  it('Onyx (e) with ZCB: +32% max, accuracy still rolls', () => {
+  it('Onyx (e) with ZCB: 11% proc, +32% max, accuracy still rolls', () => {
     const ammo = piece({ name: 'Onyx bolts (e)', slot: 'ammo' });
-    // Proc max = trunc(50 * 1.32) = 66; proc avg = acc * 66/2 = 0.5 * 33 = 16.5
-    // 0.90 * 12.5 + 0.10 * 16.5 = 11.25 + 1.65 = 12.90
-    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(12.90, 6);
+    // Proc rate 11% (wiki calc), accurate-only. Proc max = trunc(50 * 1.32) = 66;
+    // proc avg = acc * 66/2 = 0.5 * 33 = 16.5
+    // 0.89 * 12.5 + 0.11 * 16.5 = 11.125 + 1.815 = 12.94
+    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(12.94, 6);
+  });
+
+  it('Onyx (e): ineffective vs undead (no life to leech)', () => {
+    const ammo = piece({ name: 'Onyx bolts (e)', slot: 'ammo' });
+    const undead = monster({ attributes: ['undead'], skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } });
+    // Falls back to normal avg only: 0.5 * 25 = 12.5
+    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, undead)).toBeCloseTo(12.5, 6);
   });
 
   it('Dragonstone (e): immune to dragons', () => {
@@ -761,8 +769,9 @@ describe('dragon hunter weapons', () => {
     expect(dragonHunterMult(piece({ name: 'Dragon hunter lance', slot: 'weapon' }), dragon)).toEqual({ dmgMult: 1.20, accMult: 1.20 });
   });
 
-  it('DHCB: +30% / +30% vs dragon', () => {
-    expect(dragonHunterMult(piece({ name: 'Dragon hunter crossbow', slot: 'weapon' }), dragon)).toEqual({ dmgMult: 1.30, accMult: 1.30 });
+  it('DHCB: +30% acc / +25% dmg vs dragon', () => {
+    // Accuracy is ×13/10 but damage is only ×5/4 (wiki calc PlayerVsNPCCalc L788-790).
+    expect(dragonHunterMult(piece({ name: 'Dragon hunter crossbow', slot: 'weapon' }), dragon)).toEqual({ dmgMult: 1.25, accMult: 1.30 });
   });
 
   it('DHW: +50% acc / +20% dmg vs dragon', () => {

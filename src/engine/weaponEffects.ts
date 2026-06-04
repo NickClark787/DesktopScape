@@ -99,13 +99,16 @@ export function boltProcAvgPerSwing(
     return 0.90 * normalAvg + 0.10 * procAvg;
   }
 
-  // Onyx (e) — Life Leech: 10% proc, +20% max hit; lifesteal doesn't change damage dealt.
-  // ZCB: max hit mult 1.32.
+  // Onyx (e) — Life Leech: 11% proc, +20% max hit; lifesteal doesn't change damage dealt.
+  // ZCB: max hit mult 1.32. Proc only fires on a landing hit, and is ineffective
+  // vs undead (no life to leech). Matches lib/dists/bolts.ts onyxBolts.
   if (ONYX_BOLTS_RE.test(ammo.name)) {
+    const undead = (monster.attributes || []).some((a) => a.toLowerCase() === 'undead');
+    if (undead) return normalAvg;
     const mult = zcb ? 1.32 : 1.20;
     const procMax = Math.trunc(maxHit * mult);
     const procAvg = accuracy * (procMax / 2);
-    return 0.90 * normalAvg + 0.10 * procAvg;
+    return 0.89 * normalAvg + 0.11 * procAvg;
   }
 
   // Dragonstone (e) — Dragon's Breath: 6% proc, +20% max hit. Ineffective vs dragons/fire-immune.
@@ -369,11 +372,17 @@ const RANGED_IDENTITY: RangedWeaponMult = { dmgMult: 1, accMult: 1 };
  */
 export function twistedBowMult(weapon: EquipmentPiece | null, monster: Monster): RangedWeaponMult {
   if (!weapon || weapon.name !== 'Twisted bow') return RANGED_IDENTITY;
-  const m = Math.min(monster.skills.magic, 250);
-  const accRaw = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(((3 * m / 10 - 100) ** 2) / 100);
-  const dmgRaw = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc(((3 * m / 10 - 140) ** 2) / 100);
-  const accPct = Math.max(0, Math.min(140, accRaw));
-  const dmgPct = Math.max(0, Math.min(250, dmgRaw));
+  // Scaling magic = max(Magic level, magic attack bonus), capped at 250 — or 350
+  // for Xerician (Chambers of Xeric) monsters, the bow's signature content
+  // (PlayerVsNPCCalc L596-599 / L778-781 + tbowScaling L2616-2625).
+  const xerician = (monster.attributes || []).some((a) => a.toLowerCase() === 'xerician');
+  const cap = xerician ? 350 : 250;
+  const m = Math.min(cap, Math.max(monster.skills.magic, monster.offensive.magic));
+  // trunc(3m/10) BEFORE squaring, and no output clamp — the formula is naturally
+  // bounded by the magic cap, matching the wiki calc's tbowScaling verbatim.
+  const t = Math.trunc((3 * m) / 10);
+  const accPct = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc((t - 100) ** 2 / 100);
+  const dmgPct = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc((t - 140) ** 2 / 100);
   return { dmgMult: dmgPct / 100, accMult: accPct / 100 };
 }
 
@@ -496,7 +505,9 @@ export function dragonHunterMult(
 ): { dmgMult: number; accMult: number } {
   if (!weapon || !isDragon(monster)) return { dmgMult: 1, accMult: 1 };
   if (weapon.name === 'Dragon hunter lance') return { dmgMult: 1.20, accMult: 1.20 };
-  if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.30, accMult: 1.30 };
+  // DHCB: +30% accuracy (×13/10) but only +25% damage (×5/4) — the wiki calc
+  // applies ×5/4 to max hit (PlayerVsNPCCalc L788-790), not a symmetric +30%.
+  if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.25, accMult: 1.30 };
   if (weapon.name === 'Dragon hunter wand') return { dmgMult: 1.20, accMult: 1.50 };
   return { dmgMult: 1, accMult: 1 };
 }
@@ -682,6 +693,25 @@ export function voidBonus(
     return { dmgMult: 1, accMult: 1.45 };
   }
   return { dmgMult: 1, accMult: 1 };
+}
+
+/**
+ * Ranged Void effective-LEVEL multipliers (ranger helm set). The wiki calc
+ * scales the effective ranged ATTACK and STRENGTH levels — before the
+ * `×(bonus+64)` step — rather than the final rolls, and truncates after each
+ * (PlayerVsNPCCalc.getPlayerMaxRangedAttackRoll L570-572 + MaxHit L727-731):
+ *   accuracy: ×11/10 for any ranged void (regular or elite)
+ *   strength: ×11/10 regular, ×9/8 (i.e. +12.5%) elite
+ * Applying these as trailing multipliers on the roll/max-hit (as a naive
+ * `voidBonus`-style factor would) drifts by ±1 vs the game. Returns null when a
+ * full ranged void set isn't worn; callers apply the factors with Math.trunc.
+ */
+export function rangedVoidLevelFactors(
+  eq: PlayerLoadout['equipment'],
+): { acc: [number, number]; str: [number, number]; tier: 'void' | 'elite' } | null {
+  const set = detectVoidSet(eq);
+  if (!set || set.helm !== 'ranger') return null;
+  return { acc: [11, 10], str: set.tier === 'elite' ? [9, 8] : [11, 10], tier: set.tier };
 }
 
 /**

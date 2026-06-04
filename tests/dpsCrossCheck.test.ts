@@ -23,6 +23,18 @@
  * and assert the engine matches every link. This catches accuracy / defence-roll
  * (incl. the magic-uses-magic-level rule) / speed / DPS-assembly bugs that the
  * max-hit + attack-roll checks alone cannot.
+ *
+ * Phase 3 ("ranged from first principles") extends the same idea to the ranged
+ * pipeline, which the wiki test suite barely covers (GeneratedTests is melee +
+ * magic only; only Bow of faerdhinen basic rolls exist). It reimplements the
+ * canonical ranged max-hit / attack-roll formula verbatim — including void at
+ * the effective-level stage, crystal, rigour, twisted bow (with the Xerician
+ * 350 cap) and DHCB — as an independent oracle, anchored by two game-validated
+ * points (bare BoF = 29/21120; slayer(i)+crystal+bowfa on task = max 36). It
+ * also reconstructs enchanted-bolt expected damage (ruby/diamond/onyx) from
+ * lib/dists/bolts.ts. This phase surfaced and fixed five ranged engine bugs
+ * (void application point, elite-void strength, DHCB damage, onyx proc rate +
+ * undead immunity, twisted bow Xerician cap).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -279,6 +291,224 @@ const FP_ROWS: FpRow[] = FP_SCENARIOS.map((fp) => {
   };
 });
 
+// ---------- Phase 3: ranged first-principles ----------
+//
+// A reference-faithful transcription of the ranged pipeline
+// (PlayerVsNPCCalc.getPlayerMaxRangedAttackRoll + getPlayerMaxRangedMaxHit) used
+// as an INDEPENDENT oracle for ranged max hit / attack roll, then DPS via the
+// standard chain. Transcribed verbatim from the canonical source, including
+// truncation order (void scales the effective level BEFORE the strength-bonus
+// multiply; crystal/avarice/salve/blackmask/tbow/rev/dragonbane apply after).
+//
+// Anchored by two game-validated points so the base + crystal + black-mask paths
+// can't drift silently:
+//   A1: Bow of faerdhinen L99 vs Abyssal demon -> max 29, attack roll 21120 (BasicRolls, wiki)
+//   A2: Slayer helm(i) + crystal legs + crystal body + bowfa, accurate, no rigour,
+//       99 ranged, on task -> max 36 (PlayerVsNPCCalc.ts in-game-tested comment)
+
+type Factor = [number, number];
+const applyF = (x: number, [n, d]: Factor): number => Math.trunc((x * n) / d);
+
+// PlayerVsNPCCalc.tbowScaling, verbatim.
+function tbowScaling(current: number, magic: number, accuracyMode: boolean): number {
+  const factor = accuracyMode ? 10 : 14;
+  const base = accuracyMode ? 140 : 250;
+  const t2 = Math.trunc((3 * magic - factor) / 100);
+  const t3 = Math.trunc((Math.trunc((3 * magic) / 10) - 10 * factor) ** 2 / 100);
+  return Math.trunc((current * (base + t2 - t3)) / 100);
+}
+
+interface RangedEffects {
+  voidTier: 'none' | 'regular' | 'elite';
+  crystalPieces: number; // weighted: helm 1 + legs 2 + body 3
+  salve: 'none' | 'i' | 'ei';
+  blackmaskTask: boolean;
+  avariceRev: boolean;
+  forinthry: boolean;
+  twistedBow: boolean;
+  revWeapon: boolean;
+  dhcbDragon: boolean;
+}
+
+function tbowMagicFor(monster: Monster): number {
+  const xerician = (monster.attributes ?? []).some((a) => a.toLowerCase() === 'xerician');
+  const cap = xerician ? 350 : 250;
+  return Math.min(cap, Math.max(monster.skills.magic, monster.offensive?.magic ?? 0));
+}
+
+function refRangedAttackRoll(rangedLvl: number, prayerAcc: Factor, accurate: boolean, offRanged: number, e: RangedEffects, monster: Monster): number {
+  let eff = applyF(rangedLvl, prayerAcc);
+  if (accurate) eff += 3;
+  eff += 8;
+  if (e.voidTier !== 'none') eff = Math.trunc((eff * 11) / 10); // ranged void: +10% acc (regular & elite)
+  let roll = eff * (offRanged + 64);
+  if (e.crystalPieces) roll = Math.trunc((roll * (20 + e.crystalPieces)) / 20);
+  if (e.avariceRev) roll = applyF(roll, [e.forinthry ? 27 : 24, 20]);
+  else if (e.salve === 'ei') roll = applyF(roll, [6, 5]);
+  else if (e.salve === 'i') roll = applyF(roll, [7, 6]);
+  else if (e.blackmaskTask) roll = applyF(roll, [23, 20]);
+  if (e.twistedBow) roll = tbowScaling(roll, tbowMagicFor(monster), true);
+  if (e.revWeapon) roll = applyF(roll, [3, 2]);
+  if (e.dhcbDragon) roll = applyF(roll, [13, 10]); // DHCB accuracy +30%
+  return roll;
+}
+
+function refRangedMaxHit(rangedLvl: number, prayerStr: Factor, accurate: boolean, rstrBonus: number, e: RangedEffects, monster: Monster): number {
+  let eff = applyF(rangedLvl, prayerStr);
+  if (accurate) eff += 3;
+  eff += 8;
+  if (e.voidTier === 'elite') eff = Math.trunc((eff * 9) / 8); // elite ranged void: +12.5% str
+  else if (e.voidTier === 'regular') eff = Math.trunc((eff * 11) / 10); // regular: +10%
+  let max = Math.trunc((eff * (64 + rstrBonus) + 320) / 640);
+  if (e.crystalPieces) max = Math.trunc((max * (40 + e.crystalPieces)) / 40);
+  let needRev = e.revWeapon;
+  let needDragon = e.dhcbDragon;
+  if (e.avariceRev) max = applyF(max, [e.forinthry ? 27 : 24, 20]);
+  else if (e.salve === 'ei') max = applyF(max, [6, 5]);
+  else if (e.salve === 'i') max = applyF(max, [7, 6]);
+  else if (e.blackmaskTask) {
+    let num = 23; // black-mask(i) is additive with rev/dragonbane when on task
+    if (needRev) { needRev = false; num += 10; }
+    if (needDragon) { needDragon = false; num += 5; }
+    max = applyF(max, [num, 20]);
+  }
+  if (e.twistedBow) max = tbowScaling(max, tbowMagicFor(monster), false);
+  if (needRev) max = applyF(max, [3, 2]);
+  if (needDragon) max = applyF(max, [5, 4]); // DHCB damage +25% (NOT +30%)
+  return max;
+}
+
+// Enchanted-bolt expected damage per swing, transcribed from lib/dists/bolts.ts
+// (non-spec, non-ZCB, no Kandarin diary). Returns null if no bolt effect applies.
+function refBoltAvg(boltKind: string | null, maxHit: number, accuracy: number, monster: Monster): number | null {
+  const normalAvg = accuracy * (maxHit / 2);
+  const hp = monster.skills.hp || 1;
+  const undead = (monster.attributes ?? []).some((a) => a.toLowerCase() === 'undead');
+  const fieryOrDragon = (monster.attributes ?? []).some((a) => ['fiery', 'dragon'].includes(a.toLowerCase()));
+  switch (boltKind) {
+    case 'ruby': {
+      const proc = Math.min(100, Math.trunc((hp * 20) / 100));
+      return 0.94 * normalAvg + 0.06 * proc;
+    }
+    case 'diamond': {
+      const effMax = Math.trunc((maxHit * 115) / 100);
+      return 0.9 * normalAvg + 0.1 * (effMax / 2); // proc ignores accuracy
+    }
+    case 'onyx': {
+      if (undead) return normalAvg; // life-leech immune
+      const effMax = Math.trunc((maxHit * 120) / 100);
+      return 0.89 * normalAvg + 0.11 * accuracy * (effMax / 2); // 11% proc, accurate-only
+    }
+    case 'dragonstone': {
+      if (fieryOrDragon) return normalAvg; // dragonfire immune
+      // reference adds a FLAT +trunc(rangedLvl*2/10) on a 6% proc, accurate hits only
+      const bonus = Math.trunc((99 * 2) / 10); // rangedLvl 99
+      return normalAvg + accuracy * 0.06 * bonus;
+    }
+    default:
+      return null;
+  }
+}
+
+interface RangedScn {
+  label: string;
+  monsterId: number;
+  stance: WeaponStance;
+  prayers?: (keyof Prayers)[];
+  onSlayerTask?: boolean;
+  inWilderness?: boolean;
+  equip: Partial<Record<Slot, number | string>>;
+  speedTicks: number;
+  effects: Partial<RangedEffects>;
+  bolt?: 'ruby' | 'diamond' | 'onyx' | 'dragonstone' | null;
+  anchorMaxHit?: number;
+  anchorAttackRoll?: number;
+}
+
+const RIGOUR_ACC: Factor = [120, 100];
+const RIGOUR_STR: Factor = [123, 100];
+
+const RANGED_SCENARIOS: RangedScn[] = [
+  // A1 anchor — bare BoF.
+  { label: 'BoF L99 bare vs Abyssal demon (A1 anchor)', monsterId: 415, stance: 'accurate', speedTicks: 5, equip: { weapon: 25865 }, effects: {}, anchorMaxHit: 29, anchorAttackRoll: 21120 },
+  // Rigour only.
+  { label: 'BoF + rigour vs Abyssal demon', monsterId: 415, stance: 'accurate', speedTicks: 5, prayers: ['rigour'], equip: { weapon: 25865 }, effects: {} },
+  // Full crystal armour + rigour (crystalPieces 6).
+  { label: 'BoF + full crystal + rigour vs Abyssal demon', monsterId: 415, stance: 'accurate', speedTicks: 5, prayers: ['rigour'], equip: { weapon: 25865, head: 23971, body: 23975, legs: 23979 }, effects: { crystalPieces: 6 } },
+  // A2 anchor — slayer(i) + crystal legs+body + BoF, on task. crystalPieces 5.
+  { label: 'Slayer(i) + crystal legs/body + BoF on task (A2 anchor, max 36)', monsterId: 415, stance: 'accurate', speedTicks: 5, onSlayerTask: true, equip: { weapon: 25865, head: 11865, body: 23975, legs: 23979 }, effects: { crystalPieces: 5, blackmaskTask: true }, anchorMaxHit: 36 },
+  // Armadyl crossbow + dragon bolts + rigour (no crystal/void).
+  { label: 'Armadyl cbow + dragon bolts + rigour vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, prayers: ['rigour'], equip: { weapon: 11785, ammo: 21905 }, effects: {} },
+  // Regular void ranged.
+  { label: 'Regular void ranged + ACB vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, equip: { weapon: 11785, ammo: 21905, head: 11664, body: 8839, legs: 8840, hands: 8842 }, effects: { voidTier: 'regular' } },
+  // Elite void ranged.
+  { label: 'Elite void ranged + ACB vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, equip: { weapon: 11785, ammo: 21905, head: 11664, body: 13072, legs: 13073, hands: 8842 }, effects: { voidTier: 'elite' } },
+  // DHCB vs dragon (exercises DHCB acc +30% / dmg +25%).
+  { label: 'DHCB + dragon bolts vs Vorkath (dragon)', monsterId: 8059, stance: 'rapid', speedTicks: 5, equip: { weapon: 21012, ammo: 21905 }, effects: { dhcbDragon: true } },
+  // Twisted bow vs Vorkath (magic 150 — clean, divisible by 10).
+  { label: 'Twisted bow vs Vorkath (mag 150)', monsterId: 8059, stance: 'rapid', speedTicks: 5, equip: { weapon: 20997, ammo: 21905 }, effects: { twistedBow: true } },
+  // Twisted bow vs Ice demon (Xerician, magic 390 -> capped at 350, not 250) — CoX scaling.
+  { label: 'Twisted bow vs Ice demon (Xerician, mag 390->350 cap)', monsterId: 7584, stance: 'rapid', speedTicks: 5, equip: { weapon: 20997, ammo: 21905 }, effects: { twistedBow: true } },
+
+  // ---- Enchanted bolt procs on a regular crossbow (full HP, no spec / ZCB / Kandarin diary) ----
+  // Expected avg dmg per swing is reconstructed from lib/dists/bolts.ts. Ruby & diamond
+  // are clean positive checks; onyx exercises the 11% proc + accurate-only mechanic.
+  { label: 'Armadyl cbow + ruby bolts (e) vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, equip: { weapon: 11785, ammo: 9242 }, effects: {}, bolt: 'ruby' },
+  { label: 'Armadyl cbow + diamond bolts (e) vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, equip: { weapon: 11785, ammo: 9243 }, effects: {}, bolt: 'diamond' },
+  { label: 'Armadyl cbow + onyx bolts (e) vs Abyssal demon', monsterId: 415, stance: 'rapid', speedTicks: 5, equip: { weapon: 11785, ammo: 9245 }, effects: {}, bolt: 'onyx' },
+];
+
+function sumRanged(loadout: PlayerLoadout): { offRanged: number; rstr: number } {
+  let offRanged = 0;
+  let rstr = 0;
+  for (const p of Object.values(loadout.equipment)) {
+    if (!p) continue;
+    offRanged += p.offensive.ranged;
+    rstr += p.bonuses.ranged_str;
+  }
+  return { offRanged, rstr };
+}
+
+interface RangedRow {
+  scn: RangedScn;
+  gs: { maxHit: number; attackRoll: number; defenceRoll: number; accuracy: number; avgHit: number; ticks: number; dps: number };
+  exp: { maxHit: number; attackRoll: number; defenceRoll: number; accuracy: number; avgHit: number; dps: number };
+}
+
+const RANGED_ROWS: RangedRow[] = RANGED_SCENARIOS.map((scn) => {
+  const monster = getMonster(scn.monsterId);
+  const loadout = buildLoadout({
+    label: scn.label, style: 'ranged', attackStyle: 'ranged', stance: scn.stance,
+    monsterId: scn.monsterId, prayers: scn.prayers, onSlayerTask: scn.onSlayerTask,
+    inWilderness: scn.inWilderness, equip: scn.equip, expect: {},
+  });
+  const r = calcDps(loadout, monster);
+
+  const accurate = scn.stance === 'accurate';
+  const rigour = (scn.prayers ?? []).includes('rigour');
+  const prayerAcc: Factor = rigour ? RIGOUR_ACC : [1, 1];
+  const prayerStr: Factor = rigour ? RIGOUR_STR : [1, 1];
+  const eff: RangedEffects = {
+    voidTier: 'none', crystalPieces: 0, salve: 'none', blackmaskTask: false,
+    avariceRev: false, forinthry: false, twistedBow: false, revWeapon: false, dhcbDragon: false,
+    ...scn.effects,
+  };
+  const { offRanged, rstr } = sumRanged(loadout);
+  const maxHit = refRangedMaxHit(99, prayerStr, accurate, rstr, eff, monster);
+  const attackRoll = refRangedAttackRoll(99, prayerAcc, accurate, offRanged, eff, monster);
+  const defenceRoll = (monster.skills.def + 9) * (monster.defensive.standard + 64);
+  const accuracy = normalHitChance(attackRoll, defenceRoll);
+  const boltAvg = scn.bolt ? refBoltAvg(scn.bolt, maxHit, accuracy, monster) : null;
+  const avgHit = boltAvg ?? accuracy * (maxHit / 2);
+  const dps = avgHit / (scn.speedTicks * SECONDS_PER_TICK);
+
+  return {
+    scn,
+    gs: { maxHit: r.maxHit, attackRoll: r.details.attackRoll, defenceRoll: r.details.defenceRoll, accuracy: r.accuracy, avgHit: r.avgHit, ticks: r.weaponSpeedTicks, dps: r.dps },
+    exp: { maxHit, attackRoll, defenceRoll, accuracy, avgHit, dps },
+  };
+});
+
 // ---------- Report ----------
 
 afterAll(() => {
@@ -330,6 +560,33 @@ afterAll(() => {
   }
   lines.push('-'.repeat(120));
   lines.push(`PHASE 2 (DPS from rolls): ${FP_ROWS.length * 4} checks, ${FP_ROWS.length * 4 - fp2Fails} passed, ${fp2Fails} failed`);
+  lines.push('');
+
+  // Phase 3: ranged pipeline reconstructed from the canonical formula.
+  lines.push('='.repeat(120));
+  lines.push('PHASE 3: RANGED FROM FIRST PRINCIPLES (max hit / attack roll / defence / accuracy / avg dmg / DPS vs reference-faithful transcription)');
+  lines.push('='.repeat(120));
+  lines.push(`${pad('Scenario', 52)} ${pad('Metric', 9)} ${padL('GearScape', 13)} ${padL('Reference', 13)} ${padL('Δ', 11)}  Status`);
+  lines.push('-'.repeat(120));
+  let p3Fails = 0;
+  const p3Metric = (label: string, gs: number, exp: number, dp: number, exact: boolean) => {
+    const delta = gs - exp;
+    const ok = exact ? delta === 0 : Math.abs(delta) < 1e-6;
+    if (!ok) p3Fails++;
+    lines.push(`${pad('', 52)} ${pad(label, 9)} ${padL(gs.toFixed(dp), 13)} ${padL(exp.toFixed(dp), 13)} ${padL(delta.toFixed(dp), 11)}  ${ok ? 'OK' : 'FAIL'}`);
+  };
+  for (const rr of RANGED_ROWS) {
+    lines.push(pad(rr.scn.label.slice(0, 100), 52));
+    p3Metric('maxHit', rr.gs.maxHit, rr.exp.maxHit, 0, true);
+    p3Metric('atkRoll', rr.gs.attackRoll, rr.exp.attackRoll, 0, true);
+    p3Metric('defRoll', rr.gs.defenceRoll, rr.exp.defenceRoll, 0, true);
+    p3Metric('ticks', rr.gs.ticks, rr.scn.speedTicks, 0, true);
+    p3Metric('accuracy', rr.gs.accuracy, rr.exp.accuracy, 6, false);
+    p3Metric('avgHit', rr.gs.avgHit, rr.exp.avgHit, 6, false);
+    p3Metric('dps', rr.gs.dps, rr.exp.dps, 6, false);
+  }
+  lines.push('-'.repeat(120));
+  lines.push(`PHASE 3 (ranged from rolls): ${RANGED_ROWS.length * 7} checks, ${RANGED_ROWS.length * 7 - p3Fails} passed, ${p3Fails} failed`);
   lines.push('='.repeat(120));
 
   const report = lines.join('\n');
@@ -366,5 +623,27 @@ describe('DPS from rolls (first-principles, no reference install)', () => {
     expect(fr.gs.accuracy).toBeCloseTo(fr.exp.accuracy, 6);
     expect(fr.gs.avgHit).toBeCloseTo(fr.exp.avgHit, 6);
     expect(fr.gs.dps).toBeCloseTo(fr.exp.dps, 6);
+  });
+});
+
+describe('Ranged from first principles (reference-faithful transcription)', () => {
+  it.each(RANGED_ROWS)('$scn.label', (rr) => {
+    // Anchors: the independent transcription must reproduce the game-validated points.
+    if (rr.scn.anchorMaxHit !== undefined) {
+      expect(rr.exp.maxHit).toBe(rr.scn.anchorMaxHit);
+      expect(rr.gs.maxHit).toBe(rr.scn.anchorMaxHit);
+    }
+    if (rr.scn.anchorAttackRoll !== undefined) {
+      expect(rr.exp.attackRoll).toBe(rr.scn.anchorAttackRoll);
+      expect(rr.gs.attackRoll).toBe(rr.scn.anchorAttackRoll);
+    }
+    // Engine vs reference: every link.
+    expect(rr.gs.maxHit).toBe(rr.exp.maxHit);
+    expect(rr.gs.attackRoll).toBe(rr.exp.attackRoll);
+    expect(rr.gs.defenceRoll).toBe(rr.exp.defenceRoll);
+    expect(rr.gs.ticks).toBe(rr.scn.speedTicks);
+    expect(rr.gs.accuracy).toBeCloseTo(rr.exp.accuracy, 6);
+    expect(rr.gs.avgHit).toBeCloseTo(rr.exp.avgHit, 6);
+    expect(rr.gs.dps).toBeCloseTo(rr.exp.dps, 6);
   });
 });

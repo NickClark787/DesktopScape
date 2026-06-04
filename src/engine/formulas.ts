@@ -49,6 +49,7 @@ import {
   kerisSunAccBoostMult,
   magicWeaponMult,
   obsidianArmourBonus,
+  rangedVoidLevelFactors,
   scorchingBowMult,
   specialAvgPerSwing,
   targetTypeBonus,
@@ -418,6 +419,19 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
+    // Void Knight / Elite Void (ranger helm): the wiki calc scales the effective
+    // ATTACK and STRENGTH levels — before the bonus multiply — not the final
+    // roll, truncating after each (PlayerVsNPCCalc L570-572 / L727-731). Applying
+    // it as a trailing roll multiplier (as we used to) drifts by ±1.
+    const rvf = rangedVoidLevelFactors(loadout.equipment);
+    if (rvf) {
+      effectiveAttack = Math.trunc((effectiveAttack * rvf.acc[0]) / rvf.acc[1]);
+      effectiveStrength = Math.trunc((effectiveStrength * rvf.str[0]) / rvf.str[1]);
+      effects.push({
+        name: 'Void (ranged)',
+        detail: rvf.tier === 'elite' ? '+10% acc, +12.5% dmg (effective level)' : '+10% acc & dmg (effective level)',
+      });
+    }
     attackRoll = effectiveAttack * (eq.offensive.ranged + 64);
     // Eclipse atlatl quirk: it's the only ranged weapon that scales max hit off
     // the equipment-screen Strength bonus instead of Ranged Strength. The wiki/data
@@ -441,11 +455,8 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     attackRoll = Math.trunc(attackRoll * tb.accMult);
     pushIfFired(effects, 'Twisted bow', tb, `(target mag ${monster.skills.magic})`);
 
-    // Void Knight / Elite Void — ranger helm set.
-    const vr = voidBonus(loadout.equipment, 'ranged');
-    maxHit = Math.trunc(maxHit * vr.dmgMult);
-    attackRoll = Math.trunc(attackRoll * vr.accMult);
-    pushIfFired(effects, 'Void (ranged)', vr);
+    // (Ranged void is applied at the effective-level stage above, matching the
+    // wiki calc — not as a trailing multiplier here.)
 
     // Crystal armour synergy with Crystal bow / Bow of Faerdhinen.
     const cr = crystalArmourBonus(loadout.equipment);
