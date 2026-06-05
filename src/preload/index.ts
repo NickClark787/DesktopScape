@@ -17,6 +17,11 @@ const api = {
     meta: DataMeta;
   }>,
   refreshData: () => ipcRenderer.invoke(IPC.refreshData) as Promise<{ ok: boolean; files: string[] }>,
+  /** Live GE prices (latest high/low per item id) from the OSRS Wiki API. */
+  fetchPrices: () => ipcRenderer.invoke(IPC.fetchPrices) as Promise<{
+    ok: boolean;
+    prices: Record<string, { high: number | null; low: number | null }>;
+  }>,
   /**
    * Resolve an OSRS Wiki CDN URL for a sprite. The CDN segregates assets by
    * kind — equipment sprites live under `/equipment/`, monster sprites under

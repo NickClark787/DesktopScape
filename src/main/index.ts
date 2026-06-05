@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { IPC, CDN_JSON } from '../shared/constants';
+import { IPC, CDN_JSON, PRICES_API, WIKI_API_USER_AGENT } from '../shared/constants';
 import { patchEquipmentData } from '../shared/dataPatches';
 import type { EquipmentPiece } from '../shared/types';
 
@@ -129,6 +129,17 @@ app.whenReady().then(() => {
       await cacheDataFile(f, body);
     }
     return { ok: true, files };
+  });
+
+  // Live Grand Exchange prices from the OSRS Wiki real-time API. Fetched in
+  // the main process (no renderer CSP) with the policy-required descriptive
+  // User-Agent. Returns the raw id -> {high,low} map; the renderer derives a
+  // single estimated price per item.
+  ipcMain.handle(IPC.fetchPrices, async () => {
+    const res = await net.fetch(PRICES_API, { headers: { 'User-Agent': WIKI_API_USER_AGENT } });
+    if (!res.ok) throw new Error(`Prices fetch failed: ${res.status}`);
+    const json = (await res.json()) as { data?: Record<string, { high: number | null; low: number | null }> };
+    return { ok: true, prices: json.data ?? {} };
   });
 
   createWindow();

@@ -434,6 +434,10 @@ export default function App() {
               target={selectedMonster}
               style={state.style}
               ownedIds={state.ownedIds}
+              prices={state.prices}
+              pricesUpdatedAt={state.pricesUpdatedAt}
+              loadingPrices={state.loadingPrices}
+              onFetchPrices={state.fetchPrices}
               onOptimize={findUpgradeOptimum}
               onApply={applyUpgrade}
             />

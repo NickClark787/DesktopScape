@@ -55,6 +55,37 @@ function saveOwnedFilterEnabled(v: boolean): void {
   try { window.localStorage.setItem(OWNED_FILTER_LS_KEY, v ? '1' : '0'); } catch { /* ignore */ }
 }
 
+const PRICES_LS_KEY = 'gearscape:prices';
+const PRICES_AT_LS_KEY = 'gearscape:pricesUpdatedAt';
+
+/** Collapse the API's high/low pair into one usable GE price estimate. */
+function estimatePrice(entry: { high: number | null; low: number | null }): number | null {
+  const { high, low } = entry;
+  if (high != null && low != null) return Math.round((high + low) / 2);
+  return high ?? low ?? null;
+}
+function loadPrices(): Map<number, number> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(PRICES_LS_KEY);
+    if (!raw) return null;
+    const arr = JSON.parse(raw) as [number, number][];
+    return Array.isArray(arr) ? new Map(arr) : null;
+  } catch { return null; }
+}
+function loadPricesAt(): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(PRICES_AT_LS_KEY);
+  return raw ? (Number(raw) || null) : null;
+}
+function savePrices(map: Map<number, number>, at: number): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PRICES_LS_KEY, JSON.stringify([...map]));
+    window.localStorage.setItem(PRICES_AT_LS_KEY, String(at));
+  } catch { /* ignore quota */ }
+}
+
 const LOADOUTS_LS_KEY = 'gearscape:loadouts';
 
 function loadSavedLoadouts(): Record<string, LoadoutSnapshot> {
@@ -105,6 +136,12 @@ export interface AppState {
   removeOwned: (id: number) => void;
   clearOwned: () => void;
   setOwnedFilterEnabled: (v: boolean) => void;
+  /** Live GE price estimate per item id (avg of high/low), or null until
+   *  fetched. Persisted to localStorage so it's available on next launch. */
+  prices: Map<number, number> | null;
+  pricesUpdatedAt: number | null;
+  loadingPrices: boolean;
+  fetchPrices: () => Promise<void>;
   /** Saved loadouts keyed by user-supplied name. Persisted to localStorage. */
   savedLoadouts: Record<string, LoadoutSnapshot>;
   /**
@@ -178,6 +215,26 @@ export const useApp = create<AppState>((set) => ({
   }),
   clearOwned: () => { saveOwnedIds(new Set()); set({ ownedIds: new Set() }); },
   setOwnedFilterEnabled: (v) => { saveOwnedFilterEnabled(v); set({ ownedFilterEnabled: v }); },
+  prices: loadPrices(),
+  pricesUpdatedAt: loadPricesAt(),
+  loadingPrices: false,
+  fetchPrices: async () => {
+    set({ loadingPrices: true });
+    try {
+      const { prices } = await window.gearscape.fetchPrices();
+      const map = new Map<number, number>();
+      for (const [id, entry] of Object.entries(prices)) {
+        const est = estimatePrice(entry);
+        if (est != null) map.set(Number(id), est);
+      }
+      const at = Date.now();
+      savePrices(map, at);
+      set({ prices: map, pricesUpdatedAt: at, loadingPrices: false });
+    } catch (e) {
+      set({ loadingPrices: false });
+      throw e;
+    }
+  },
   savedLoadouts: loadSavedLoadouts(),
   loadedLoadoutName: null,
   saveLoadout: (name) => set((st) => {

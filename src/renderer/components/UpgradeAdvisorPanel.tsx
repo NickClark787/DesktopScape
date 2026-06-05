@@ -4,12 +4,18 @@ import { findUpgrades, type UpgradeSuggestion } from '../../engine/upgradeAdviso
 import { GearIcon } from './GearIcon';
 
 type Scope = 'owned' | 'all';
+type SortBy = 'dps' | 'value';
 
 interface Props {
   loadout: PlayerLoadout;
   target: Monster | null;
   style: CombatStyle;
   ownedIds: Set<number>;
+  /** Estimated GE price per item id, or null until fetched. */
+  prices: Map<number, number> | null;
+  pricesUpdatedAt: number | null;
+  loadingPrices: boolean;
+  onFetchPrices: () => Promise<void>;
   /** Runs the optimizer for the current style at the given scope. */
   onOptimize: (scope: Scope) => BestSetupCandidate | null;
   /** Applies an upgrade's gear changes + stance/attack/spell hints. */
@@ -23,13 +29,39 @@ const SLOT_LABEL: Record<string, string> = {
 
 const fmt = (n: number, d = 2) => (isFinite(n) ? n.toFixed(d) : '∞');
 
-export function UpgradeAdvisorPanel({ loadout, target, style, ownedIds, onOptimize, onApply }: Props) {
+function fmtGp(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}b`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}m`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}k`;
+  return `${Math.round(n)}`;
+}
+
+function ago(ts: number): string {
+  const s = Math.max(0, Date.now() - ts) / 1000;
+  if (s < 90) return 'just now';
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+interface Row {
+  s: UpgradeSuggestion;
+  price: number | null;
+  /** DPS gained per 1M gp (owned items are free → Infinity). null = no price. */
+  value: number | null;
+}
+
+export function UpgradeAdvisorPanel({
+  loadout, target, style, ownedIds, prices, pricesUpdatedAt, loadingPrices, onFetchPrices, onOptimize, onApply,
+}: Props) {
   const [scope, setScope] = useState<Scope>(() => (ownedIds.size > 0 ? 'owned' : 'all'));
+  const [sortBy, setSortBy] = useState<SortBy>('dps');
   const [best, setBest] = useState<BestSetupCandidate | null>(null);
   const [computing, setComputing] = useState(false);
+  const [priceError, setPriceError] = useState('');
 
-  // The cached optimum is specific to this target + style + scope. Invalidate
-  // it when any of those change so we don't diff against a stale optimum.
+  // The cached optimum is specific to this target + style. Invalidate it when
+  // either changes so we don't diff against a stale optimum.
   useEffect(() => { setBest(null); }, [target?.id, target?.version, style]);
 
   // Cheap marginal diff — recomputes as the loadout changes (e.g. after the
@@ -39,15 +71,39 @@ export function UpgradeAdvisorPanel({ loadout, target, style, ownedIds, onOptimi
     return findUpgrades(loadout, target, best, ownedIds.size ? ownedIds : null);
   }, [best, target, loadout, ownedIds]);
 
+  // Attach price + value, then order by the chosen key.
+  const rows: Row[] = useMemo(() => {
+    if (!report) return [];
+    const withPrice: Row[] = report.suggestions.map((s) => {
+      const price = s.owned ? null : (prices?.get(s.to.id) ?? null);
+      const value = s.owned ? Infinity : (price && price > 0 ? (s.delta * 1e6) / price : null);
+      return { s, price, value };
+    });
+    if (sortBy === 'value' && prices) {
+      // Free (owned) upgrades first, then best DPS-per-gp, unknown prices last.
+      return withPrice.slice().sort((a, b) => (b.value ?? -1) - (a.value ?? -1));
+    }
+    return withPrice; // already DPS-desc from the engine
+  }, [report, prices, sortBy]);
+
   function run(s: Scope) {
     if (!target) return;
     setScope(s);
     setComputing(true);
-    // Yield a frame so the spinner paints before the (sync) optimizer runs.
     requestAnimationFrame(() => {
       setBest(onOptimize(s));
       setComputing(false);
     });
+  }
+
+  async function loadPrices() {
+    setPriceError('');
+    try {
+      await onFetchPrices();
+      setSortBy('value');
+    } catch (e) {
+      setPriceError(`Couldn't fetch prices: ${(e as Error).message}`);
+    }
   }
 
   return (
@@ -60,47 +116,63 @@ export function UpgradeAdvisorPanel({ loadout, target, style, ownedIds, onOptimi
       </div>
 
       <div className="p-4 flex flex-col gap-3">
-        {/* Scope toggle */}
+        {/* Scope + run */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-bg-soft p-1 text-sm">
-            <button
-              className="pill-tab"
-              data-active={scope === 'owned'}
-              onClick={() => run('owned')}
-              disabled={!target}
-              title="Best upgrades you can equip from your owned items"
-            >
-              From my bank
-            </button>
-            <button
-              className="pill-tab"
-              data-active={scope === 'all'}
-              onClick={() => run('all')}
-              disabled={!target}
-              title="Best upgrades from every item — buy targets included"
-            >
-              All items
-            </button>
+            <button className="pill-tab" data-active={scope === 'owned'} onClick={() => run('owned')} disabled={!target}
+              title="Best upgrades you can equip from your owned items">From my bank</button>
+            <button className="pill-tab" data-active={scope === 'all'} onClick={() => run('all')} disabled={!target}
+              title="Best upgrades from every item — buy targets included">All items</button>
           </div>
-          <button
-            className="btn btn-primary text-sm"
-            onClick={() => run(scope)}
-            disabled={!target || computing}
-          >
+          <button className="btn btn-primary text-sm" onClick={() => run(scope)} disabled={!target || computing}>
             {computing ? 'Searching…' : best ? 'Recompute' : 'Find upgrades'}
           </button>
         </div>
 
-        {/* Summary bar: current → best */}
+        {/* Summary + price/sort controls */}
         {report && (
-          <div className="flex items-center gap-2 text-xs text-text-dim tabular-nums">
-            <span>Current <span className="text-text">{fmt(report.baseline, 2)}</span></span>
-            <span className="text-text-faint">→</span>
-            <span>Best <span className="text-accent font-semibold">{fmt(report.bestDps, 2)}</span> dps</span>
-            {report.bestDps - report.baseline > 0.005 && (
-              <span className="text-emerald-400">(+{fmt(report.bestDps - report.baseline, 2)})</span>
+          <div className="flex items-center justify-between gap-3 flex-wrap text-xs">
+            <div className="flex items-center gap-2 text-text-dim tabular-nums">
+              <span>Current <span className="text-text">{fmt(report.baseline, 2)}</span></span>
+              <span className="text-text-faint">→</span>
+              <span>Best <span className="text-accent font-semibold">{fmt(report.bestDps, 2)}</span> dps</span>
+              {report.bestDps - report.baseline > 0.005 && (
+                <span className="text-emerald-400">(+{fmt(report.bestDps - report.baseline, 2)})</span>
+              )}
+            </div>
+            {!report.atOptimum && (
+              <div className="flex items-center gap-2">
+                <span className="text-text-faint">Sort</span>
+                <div className="inline-flex rounded border border-border bg-bg-soft p-0.5">
+                  <button className="pill-tab !px-2 !py-0.5 text-xs" data-active={sortBy === 'dps'} onClick={() => setSortBy('dps')}>DPS</button>
+                  <button
+                    className="pill-tab !px-2 !py-0.5 text-xs"
+                    data-active={sortBy === 'value'}
+                    onClick={() => (prices ? setSortBy('value') : loadPrices())}
+                    title="DPS gained per GP"
+                  >Value</button>
+                </div>
+              </div>
             )}
-            <span className="text-text-faint">· {scope === 'owned' ? 'your bank' : 'all items'}</span>
+          </div>
+        )}
+
+        {/* Prices status line */}
+        {report && !report.atOptimum && (
+          <div className="text-[11px] text-text-faint flex items-center gap-2">
+            {loadingPrices ? (
+              <span>Fetching live GE prices…</span>
+            ) : prices ? (
+              <>
+                <span>GE prices · {pricesUpdatedAt ? ago(pricesUpdatedAt) : 'loaded'}</span>
+                <button className="hover:text-accent underline-offset-2 hover:underline" onClick={loadPrices}>refresh</button>
+              </>
+            ) : (
+              <button className="hover:text-accent underline-offset-2 hover:underline" onClick={loadPrices}>
+                Load live GE prices to rank by value (DPS per GP)
+              </button>
+            )}
+            {priceError && <span className="text-red-400">{priceError}</span>}
           </div>
         )}
 
@@ -119,7 +191,7 @@ export function UpgradeAdvisorPanel({ loadout, target, style, ownedIds, onOptimi
           </p>
         ) : (
           <div className="flex flex-col gap-1.5">
-            {report.suggestions.map((s, i) => (
+            {rows.map(({ s, price, value }, i) => (
               <button
                 key={`${s.slot}-${s.to.id}`}
                 onClick={() => onApply(s)}
@@ -147,14 +219,15 @@ export function UpgradeAdvisorPanel({ loadout, target, style, ownedIds, onOptimi
                     +{fmt(s.delta, 2)}
                     {s.pct !== null && <span className="text-emerald-400/70 text-[11px] font-normal"> ({fmt(s.pct * 100, 0)}%)</span>}
                   </span>
-                  <span
-                    className={[
-                      'text-[10px] uppercase tracking-wider font-bold',
-                      s.owned ? 'text-style-ranged' : 'text-accent',
-                    ].join(' ')}
-                  >
-                    {s.owned ? 'Owned' : 'Buy'}
-                  </span>
+                  {s.owned ? (
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-style-ranged">Owned</span>
+                  ) : (
+                    <span className="text-[11px] flex items-center gap-1">
+                      <span className="uppercase tracking-wider font-bold text-accent">Buy</span>
+                      {price != null && <span className="text-text-dim">{fmtGp(price)}</span>}
+                      {value != null && isFinite(value) && <span className="text-text-faint">· {fmt(value, 2)} dps/m</span>}
+                    </span>
+                  )}
                 </span>
               </button>
             ))}
