@@ -13,7 +13,9 @@ import { OwnedFilterPanel } from './components/OwnedFilterPanel';
 import { LoadoutManagerPanel } from './components/LoadoutManagerPanel';
 import { DataStalenessBadge } from './components/DataStalenessBadge';
 import { GearPickerModal } from './components/GearPickerModal';
+import { UpgradeAdvisorPanel } from './components/UpgradeAdvisorPanel';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
+import type { UpgradeSuggestion } from '../engine/upgradeAdvisor';
 import { calcDps } from '../engine/formulas';
 import { rankStyles, styleScores } from './utils/styleRanking';
 import type { AttackType, BestSetupCandidate, CombatStyle, EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
@@ -254,6 +256,59 @@ export default function App() {
     setCandidates((c) => ({ ...c, [state.style]: newCandidate }));
   }
 
+  /**
+   * Optimizer run for the Upgrade Advisor: the best setup for the current
+   * style against the selected monster, at the requested scope ('owned'
+   * restricts to the player's bank; 'all' considers every item). The advisor
+   * diffs this optimum against the live loadout to surface single-slot
+   * upgrades. Honours the same stance/attack-style overrides as Find best setup.
+   */
+  function findUpgradeOptimum(scope: 'owned' | 'all'): BestSetupCandidate | null {
+    if (!selectedMonster) return null;
+    const ownedOnly = scope === 'owned' ? state.ownedIds : null;
+    const forceStance = state.stanceOverride ?? undefined;
+    const forceAttackStyle = state.attackStyleOverride ?? undefined;
+    return runOptimizerForStyle(state.style, state.loadout, selectedMonster, forceStance, forceAttackStyle, ownedOnly);
+  }
+
+  /**
+   * Apply an upgrade suggestion from the advisor: merge its gear changes
+   * (weapon swaps bundle ammo + shield-clear) and any stance/attack/spell hint
+   * into the live loadout, then refresh the displayed metrics — mirroring the
+   * recompute that `pickSlot` does for a manual swap.
+   */
+  function applyUpgrade(sug: UpgradeSuggestion) {
+    const nextEquipment = { ...state.loadout.equipment };
+    for (const [slot, piece] of Object.entries(sug.changes)) {
+      nextEquipment[slot as Exclude<EquipmentSlot, '2h'>] = piece ?? null;
+    }
+    state.setEquipment(nextEquipment);
+    if (sug.stance) state.setStance(sug.stance);
+    if (sug.attackStyle) state.setAttackStyle(sug.attackStyle);
+    if (state.style === 'magic' && sug.spell !== undefined) state.setSpell(sug.spell);
+    if (!selectedMonster) return;
+    const nextLoadout: PlayerLoadout = {
+      ...state.loadout,
+      style: state.style,
+      equipment: nextEquipment,
+      stance: sug.stance ?? state.loadout.stance,
+      attackStyle: sug.attackStyle ?? state.loadout.attackStyle,
+      spell: state.style === 'magic' && sug.spell !== undefined ? sug.spell : state.loadout.spell,
+    };
+    const result = calcDps(nextLoadout, selectedMonster);
+    setCandidates((c) => ({
+      ...c,
+      [state.style]: {
+        equipment: nextEquipment,
+        result,
+        style: state.style,
+        attackStyle: nextLoadout.attackStyle,
+        spell: state.style === 'magic' ? nextLoadout.spell : undefined,
+        stance: nextLoadout.stance,
+      },
+    }));
+  }
+
   async function refreshData() {
     setRefreshing(true);
     setNotice('');
@@ -373,6 +428,14 @@ export default function App() {
               target={selectedMonster}
               computing={computing}
               onSlotClick={(slot) => setPickerSlot(slot)}
+            />
+            <UpgradeAdvisorPanel
+              loadout={state.loadout}
+              target={selectedMonster}
+              style={state.style}
+              ownedIds={state.ownedIds}
+              onOptimize={findUpgradeOptimum}
+              onApply={applyUpgrade}
             />
           </main>
         </div>
