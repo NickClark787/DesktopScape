@@ -196,6 +196,32 @@ export interface PlayerLoadout {
   stance?: WeaponStance;
   /** Raid context — scales target HP/def before the DPS roll. */
   raidScaling?: RaidScaling;
+  /** Pre-applied defence drain (DWH/BGS/etc. spec hits) to simulate the real
+   *  fight after an opener. Applied to the target after raid scaling. */
+  defenceReduction?: DefenceReduction;
+}
+
+/**
+ * Defence-draining opener applied to the target before the DPS roll, so the
+ * simulated DPS reflects the real fight after a few spec hits. Counts are
+ * successful hits; `bgs` is total Defence levels drained by Bandos godsword
+ * spec damage. Mechanics mirror the OSRS Wiki calculator.
+ */
+export interface DefenceReduction {
+  /** Dragon warhammer hits — each removes 30% of current Defence. */
+  dwh: number;
+  /** Elder maul hits — each removes 35% of current Defence. */
+  elderMaul: number;
+  /** Arclight hits — flat per-hit drain off base Defence (2× vs demons). */
+  arclight: number;
+  /** Emberlight hits — flat per-hit drain off base Defence (3× vs demons). */
+  emberlight: number;
+  /** Bandos godsword: total Defence levels drained (= spec damage dealt). */
+  bgs: number;
+  /** Accursed sceptre: −15% Defence and Magic level. */
+  accursed: boolean;
+  /** Vulnerability spell: −10% Defence level. */
+  vulnerability: boolean;
 }
 
 /**

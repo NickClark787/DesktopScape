@@ -28,6 +28,7 @@ import {
   spellByName,
 } from './spells';
 import { applyRaidScalingDescribed } from './raidScaling';
+import { applyDefenceReductionDescribed } from './defenceReduction';
 import {
   berserkerNeckBonus,
   boltProcName,
@@ -269,8 +270,12 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   // sees the scaled monster, so accuracy reflects scaled defence (ToA) and
   // TTK reflects scaled HP.
   const scaled = applyRaidScalingDescribed(monsterIn, loadout.raidScaling);
-  const monster = scaled.monster;
   if (scaled.effect) effects.push(scaled.effect);
+  // Defence drain (DWH/BGS/Elder maul/etc. opener) — applied after raid scaling
+  // so the spec % drains the raid-inflated defence, matching the real fight.
+  const drained = applyDefenceReductionDescribed(scaled.monster, loadout.defenceReduction);
+  const monster = drained.monster;
+  if (drained.effect) effects.push(drained.effect);
   const eq = sumEquipment(loadout.equipment);
   const pr = prayerMultipliers(loadout.prayers);
   const sk: PlayerSkills = { ...loadout.skills };

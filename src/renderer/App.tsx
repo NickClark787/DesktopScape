@@ -8,6 +8,7 @@ import { PotionPanel } from './components/PotionPanel';
 import { ResultsPanel } from './components/ResultsPanel';
 import { SpellPicker } from './components/SpellPicker';
 import { RaidPanel } from './components/RaidPanel';
+import { DefenceReductionPanel } from './components/DefenceReductionPanel';
 import { OverridesPanel } from './components/OverridesPanel';
 import { OwnedFilterPanel } from './components/OwnedFilterPanel';
 import { LoadoutManagerPanel } from './components/LoadoutManagerPanel';
@@ -363,6 +364,11 @@ export default function App() {
             <RaidPanel
               value={state.loadout.raidScaling}
               onChange={state.setRaidScaling}
+            />
+            <DefenceReductionPanel
+              value={state.loadout.defenceReduction}
+              monster={selectedMonster}
+              onChange={state.setDefenceReduction}
             />
             <StatsPanel
               skills={state.loadout.skills}

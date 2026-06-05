@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { EquipmentPiece, EquipmentSlot, Monster, CombatStyle, PlayerLoadout, Prayers, Potions, RaidScaling, WeaponStance, MeleeAttackType } from '@shared/types';
+import type { DefenceReduction, EquipmentPiece, EquipmentSlot, Monster, CombatStyle, PlayerLoadout, Prayers, Potions, RaidScaling, WeaponStance, MeleeAttackType } from '@shared/types';
 import { DEFAULT_PLAYER_SKILLS } from '@shared/constants';
 import type { DataMeta } from '../../preload';
 
@@ -171,6 +171,7 @@ export interface AppState {
   setStance: (v: WeaponStance | undefined) => void;
   setSpell: (v: string | null) => void;
   setRaidScaling: (v: RaidScaling | undefined) => void;
+  setDefenceReduction: (v: DefenceReduction | undefined) => void;
   hydrate: (data: { equipment: EquipmentPiece[]; monsters: Monster[]; meta?: DataMeta }) => void;
   setEquipment: (eq: PlayerLoadout['equipment']) => void;
   /**
@@ -347,6 +348,7 @@ export const useApp = create<AppState>((set) => ({
   setStance: (v) => set((st) => ({ loadout: { ...st.loadout, stance: v } })),
   setSpell: (v) => set((st) => ({ loadout: { ...st.loadout, spell: v } })),
   setRaidScaling: (v) => set((st) => ({ loadout: { ...st.loadout, raidScaling: v } })),
+  setDefenceReduction: (v) => set((st) => ({ loadout: { ...st.loadout, defenceReduction: v } })),
   hydrate: ({ equipment, monsters, meta }) => set({ equipment, monsters, loading: false, dataMeta: meta ?? null }),
   // Both setters drop loadedLoadoutName — once the equipment is mutated by
   // either the optimizer (setEquipment) or a manual picker swap (setSlot),

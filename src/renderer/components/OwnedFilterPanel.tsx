@@ -134,7 +134,7 @@ export function OwnedFilterPanel({
                     onChange={(e) => setPasteText(e.target.value)}
                     rows={5}
                     spellCheck={false}
-                    placeholder={'Item id\tItem name\tItem quantity\n9787\tSlayer cape(t)\t1'}
+                    placeholder={'Paste here'}
                     className="w-full bg-bg-raised border border-border rounded px-3 py-2 text-xs font-mono outline-none focus:border-accent resize-y whitespace-pre"
                   />
                   <div className="flex items-center gap-2 flex-wrap">
