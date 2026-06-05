@@ -2,12 +2,15 @@ import { useMemo, useState } from 'react';
 import fuzzysort from 'fuzzysort';
 import type { EquipmentPiece } from '@shared/types';
 import { GearIcon } from './GearIcon';
+import { parseBankItemIds } from '../utils/parseBankExport';
 
 interface Props {
   equipment: EquipmentPiece[];
   ownedIds: Set<number>;
   enabled: boolean;
   onAdd: (id: number) => void;
+  /** Bulk-add ids parsed from a pasted bank export. */
+  onImport: (ids: number[]) => void;
   onRemove: (id: number) => void;
   onClear: () => void;
   onToggleEnabled: (v: boolean) => void;
@@ -18,17 +21,38 @@ export function OwnedFilterPanel({
   ownedIds,
   enabled,
   onAdd,
+  onImport,
   onRemove,
   onClear,
   onToggleEnabled,
 }: Props) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [importMsg, setImportMsg] = useState('');
 
   const ownedPieces = useMemo(
     () => equipment.filter((p) => ownedIds.has(p.id)),
     [equipment, ownedIds],
   );
+
+  // Set of every real equipment id, used to drop non-gear rows (food, runes,
+  // teleports…) from a pasted bank so only wearable items enter the filter.
+  const equipIds = useMemo(() => new Set(equipment.map((e) => e.id)), [equipment]);
+
+  function handleImport() {
+    const parsed = parseBankItemIds(pasteText);
+    const matched = parsed.filter((id) => equipIds.has(id));
+    onImport(matched);
+    if (parsed.length === 0) {
+      setImportMsg('No item rows found — each line should start with an item id.');
+    } else if (matched.length === 0) {
+      setImportMsg(`0 of ${parsed.length} pasted rows matched gear (non-wearable items are ignored).`);
+    } else {
+      setImportMsg(`Matched ${matched.length} gear item${matched.length === 1 ? '' : 's'} from ${parsed.length} pasted row${parsed.length === 1 ? '' : 's'}.`);
+    }
+  }
 
   // Search results — exclude items already owned, cap at 30
   const results = useMemo(() => {
@@ -94,6 +118,48 @@ export function OwnedFilterPanel({
                 ))}
               </div>
             )}
+
+            {/* Bulk import from a RuneLite-style bank export (id / name / qty). */}
+            <div className="border-t border-border pt-3 flex flex-col gap-2">
+              <button
+                className="btn text-xs self-start"
+                onClick={() => setPasteOpen((v) => !v)}
+              >
+                {pasteOpen ? 'Hide bank import' : 'Paste bank export'}
+              </button>
+              {pasteOpen && (
+                <>
+                  <textarea
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    rows={5}
+                    spellCheck={false}
+                    placeholder={'Item id\tItem name\tItem quantity\n9787\tSlayer cape(t)\t1'}
+                    className="w-full bg-bg-raised border border-border rounded px-3 py-2 text-xs font-mono outline-none focus:border-accent resize-y whitespace-pre"
+                  />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      className="btn btn-primary text-xs"
+                      onClick={handleImport}
+                      disabled={!pasteText.trim()}
+                    >
+                      Import
+                    </button>
+                    <button
+                      className="btn text-xs"
+                      onClick={() => { setPasteText(''); setImportMsg(''); }}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  {importMsg && <span className="text-xs text-text-dim">{importMsg}</span>}
+                  <p className="text-[11px] text-text-faint leading-snug">
+                    Paste a bank export (e.g. a RuneLite bank plugin). Each line starts with the
+                    item id; non-wearable items are ignored. Adds to your owned list.
+                  </p>
+                </>
+              )}
+            </div>
 
             {ownedPieces.length > 0 && (
               <>

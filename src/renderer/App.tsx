@@ -322,6 +322,7 @@ export default function App() {
               ownedIds={state.ownedIds}
               enabled={state.ownedFilterEnabled}
               onAdd={state.addOwned}
+              onImport={state.importOwned}
               onRemove={state.removeOwned}
               onClear={state.clearOwned}
               onToggleEnabled={state.setOwnedFilterEnabled}

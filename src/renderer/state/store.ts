@@ -99,6 +99,9 @@ export interface AppState {
   ownedIds: Set<number>;
   ownedFilterEnabled: boolean;
   addOwned: (id: number) => void;
+  /** Bulk-add many ids at once (e.g. from a pasted bank export) — one merge
+   *  into the set and a single localStorage write. */
+  importOwned: (ids: number[]) => void;
   removeOwned: (id: number) => void;
   clearOwned: () => void;
   setOwnedFilterEnabled: (v: boolean) => void;
@@ -157,6 +160,13 @@ export const useApp = create<AppState>((set) => ({
   addOwned: (id) => set((st) => {
     const next = new Set(st.ownedIds);
     next.add(id);
+    saveOwnedIds(next);
+    return { ownedIds: next };
+  }),
+  importOwned: (ids) => set((st) => {
+    if (ids.length === 0) return {};
+    const next = new Set(st.ownedIds);
+    for (const id of ids) next.add(id);
     saveOwnedIds(next);
     return { ownedIds: next };
   }),
