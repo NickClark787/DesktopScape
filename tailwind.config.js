@@ -69,6 +69,41 @@ export default {
         panel: 'inset 0 1px 0 rgba(255,203,71,0.05), 0 2px 8px rgba(0,0,0,0.45)',
         // Raised-metal button: 1px highlight up top, 1px shadow down low.
         btn: 'inset 0 1px 0 rgba(255,255,255,0.05), 0 1px 2px rgba(0,0,0,0.5)',
+        // Gold halo for the hovered equipment well / focused control.
+        glow: '0 0 0 1px rgba(255,203,71,0.35), 0 4px 18px rgba(255,203,71,0.14)',
+      },
+      // A small, deliberate motion vocabulary. Reused everywhere so the app
+      // feels of-a-piece; all of it is suppressed under prefers-reduced-motion
+      // (see index.css). Easing leans on a soft overshoot for "placed metal".
+      keyframes: {
+        'fade-rise': {
+          '0%': { opacity: '0', transform: 'translateY(10px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'pop-in': {
+          '0%': { opacity: '0', transform: 'scale(0.82)' },
+          '62%': { opacity: '1', transform: 'scale(1.05)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'modal-in': {
+          '0%': { opacity: '0', transform: 'translateY(8px) scale(0.975)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        'backdrop-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        'glow-pulse': {
+          '0%, 100%': { opacity: '0.45' },
+          '50%': { opacity: '0.85' },
+        },
+      },
+      animation: {
+        'fade-rise': 'fade-rise 0.5s cubic-bezier(0.22,0.7,0.2,1) both',
+        'pop-in': 'pop-in 0.32s cubic-bezier(0.2,0.8,0.2,1) both',
+        'modal-in': 'modal-in 0.24s cubic-bezier(0.2,0.8,0.2,1) both',
+        'backdrop-in': 'backdrop-in 0.2s ease-out both',
+        'glow-pulse': 'glow-pulse 3.4s ease-in-out infinite',
       },
     },
   },

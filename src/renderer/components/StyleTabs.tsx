@@ -53,7 +53,8 @@ export function StyleTabs({ value, onChange, order = DEFAULT_STYLE_ORDER, leader
                   defence heuristic (pre-run) or actual DPS (post-run). */}
               {isLeader && leaderHint && (
                 <span
-                  className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-accent align-middle"
+                  className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-accent align-middle animate-glow-pulse"
+                  style={{ boxShadow: '0 0 6px rgba(255,203,71,0.8)' }}
                   aria-hidden
                 />
               )}

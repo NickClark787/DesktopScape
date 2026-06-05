@@ -4,13 +4,41 @@
 
 html, body, #root { height: 100%; }
 body {
-  background: #1a130d;
-  /* Very subtle parchment-grain noise so the dark background doesn't read
-     as flat-black. SVG fractalNoise is cheap, GPU-rasterized, and inlines
-     without an extra request. Opacity kept low (~3%) so it adds texture
-     without becoming visual noise on top of the data UI. */
+  background-color: #1a130d;
+  /* Layered atmosphere (painted bottom-to-top in source order):
+     1. a warm gold key-light glow spilling from the top edge,
+     2. a dim ember glow rising from the lower-right, and
+     3. the original parchment-grain noise so nothing reads as flat-black.
+     SVG fractalNoise is cheap, GPU-rasterized, and inlines without a request.
+     `fixed` keeps the glows anchored to the viewport while content scrolls,
+     so the light feels like it comes from the room, not the page. */
   background-image:
+    radial-gradient(115% 80% at 50% -12%, rgba(255, 203, 71, 0.09), transparent 55%),
+    radial-gradient(90% 70% at 88% 112%, rgba(150, 96, 42, 0.12), transparent 60%),
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-attachment: fixed, fixed, fixed;
+}
+
+/* Gold text selection — on-brand and legible against the dark surfaces. */
+::selection { background: rgba(255, 203, 71, 0.28); color: #fff6df; }
+
+/* Keyboard focus ring in OSRS gold. Pointer clicks don't trigger it
+   (:focus-visible), so the chrome stays calm during normal mouse use. */
+:focus-visible {
+  outline: 2px solid rgba(255, 203, 71, 0.65);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect reduced-motion: collapse every animation/transition to ~instant
+   while preserving final state. One switch covers the whole motion system. */
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -47,9 +75,13 @@ body {
      advertise the click-to-swap affordance. */
   .slot-cell {
     @apply relative aspect-square bg-bg-slot rounded border border-border shadow-slot
-           flex items-center justify-center overflow-hidden cursor-pointer transition;
+           flex items-center justify-center overflow-hidden cursor-pointer
+           transition-[transform,border-color,box-shadow] duration-150 ease-out;
   }
-  .slot-cell:hover { @apply border-accent/70; }
+  /* Hover lifts the well a hair and rings it in gold — the click-to-swap
+     affordance reads as "this tile is interactive" without repainting. */
+  .slot-cell:hover { @apply border-accent/70 shadow-glow -translate-y-px; }
+  .slot-cell:active { @apply translate-y-0; }
   .slot-cell-label {
     @apply absolute inset-x-0 bottom-0 text-[10px] text-text-faint text-center pointer-events-none select-none;
   }
@@ -61,16 +93,29 @@ body {
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded font-semibold text-sm
            px-3 py-1.5 transition border border-border bg-bg-raised text-text shadow-btn
-           hover:border-accent/70 hover:text-accent;
+           hover:border-accent/70 hover:text-accent
+           active:translate-y-px;
   }
+  .btn:disabled { @apply opacity-50 cursor-not-allowed; }
 
   /* Primary CTA — gold fill with dark text, like the action buttons on
      the in-game world map / quest list. Uses font-bold for stronger weight
-     against the bright gold background. */
+     against the bright gold background. A light "sheen" band sweeps across
+     on hover (a single pass) to give the gold a struck-metal shine. */
   .btn-primary {
-    @apply bg-accent text-bg border-accent font-bold
+    @apply relative overflow-hidden bg-accent text-bg border-accent font-bold
            hover:bg-accent-hover hover:border-accent-hover hover:text-bg;
   }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: 0; width: 45%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    transform: translateX(-220%);
+    pointer-events: none;
+  }
+  .btn-primary:hover:not(:disabled)::after { animation: btn-sheen 0.75s ease-out; }
+  @keyframes btn-sheen { to { transform: translateX(420%); } }
 
   /* Numeric input — tabular-nums so the digits don't dance when typed,
      and right-aligned to anchor the number to the field edge. */
@@ -84,10 +129,38 @@ body {
      bg-soft strip. Inactive tabs hover gold without the lift, keeping the
      active state distinct. */
   .pill-tab {
-    @apply px-4 py-2 text-sm font-semibold rounded text-text-dim transition
+    @apply px-4 py-2 text-sm font-semibold rounded text-text-dim
+           transition-[color,background-color,box-shadow,transform] duration-200 ease-out
            hover:text-accent;
   }
   .pill-tab[data-active=true] {
     @apply bg-bg-raised text-accent shadow-btn;
   }
+
+  /* Hero DPS readout — the payoff number. Brushed-gold gradient fill with a
+     soft halo so it reads as the brightest thing on the page; tabular-nums
+     keeps the count-up from reflowing as digits tick over. */
+  .hero-dps {
+    @apply font-rs font-bold tabular-nums leading-none;
+    background: linear-gradient(180deg, #fff1c4 0%, #ffcb47 52%, #d9991f 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 30px rgba(255, 203, 71, 0.28);
+    letter-spacing: -0.015em;
+  }
 }
+
+/* One-time staggered entrance for a container's direct children — applied to
+   the sidebar and the main column so the workspace "assembles" on load. The
+   `fade-rise` keyframes come from the Tailwind motion config. Capped at 8
+   steps; later children share the last delay. Suppressed under reduced-motion
+   by the global guard above. */
+.reveal-stagger > * { animation: fade-rise 0.5s cubic-bezier(0.22, 0.7, 0.2, 1) both; }
+.reveal-stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.reveal-stagger > *:nth-child(2) { animation-delay: 0.10s; }
+.reveal-stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.reveal-stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.reveal-stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.reveal-stagger > *:nth-child(6) { animation-delay: 0.34s; }
+.reveal-stagger > *:nth-child(n+7) { animation-delay: 0.40s; }

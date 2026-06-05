@@ -158,11 +158,11 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-backdrop-in"
       onClick={onClose}
     >
       <div
-        className="w-[640px] max-h-[80vh] flex flex-col bg-bg-soft border border-border rounded-lg shadow-2xl"
+        className="w-[640px] max-h-[80vh] flex flex-col bg-bg-soft border border-border-strong rounded-lg shadow-2xl animate-modal-in"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="panel-heading flex items-center justify-between rounded-t-lg">

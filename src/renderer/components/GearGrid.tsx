@@ -37,29 +37,26 @@ function Cell({
   // and we add a subtle hover ring to advertise the affordance.
   const interactive = !!onClick;
   const baseTitle = piece ? piece.name : `${SLOT_LABEL[slot]} (click to pick)`;
+  // Keying the icon by piece id re-mounts it on a swap, replaying the pop-in
+  // animation — so a piece visibly "drops" into its well when equipped, and
+  // the whole set pops in together when the optimizer fills every slot.
+  const content = piece ? (
+    <span key={piece.id} className="animate-pop-in inline-flex">
+      <GearIcon piece={piece} size="lg" />
+    </span>
+  ) : (
+    <span className="text-text-faint text-[11px] uppercase tracking-wide">{SLOT_LABEL[slot]}</span>
+  );
   if (interactive) {
     return (
-      <button
-        type="button"
-        onClick={onClick}
-        title={baseTitle}
-        className="slot-cell group hover:border-accent focus:border-accent focus:outline-none transition-colors cursor-pointer"
-      >
-        {piece ? (
-          <GearIcon piece={piece} size="lg" />
-        ) : (
-          <span className="text-text-faint text-[11px] uppercase tracking-wide">{SLOT_LABEL[slot]}</span>
-        )}
+      <button type="button" onClick={onClick} title={baseTitle} className="slot-cell group">
+        {content}
       </button>
     );
   }
   return (
     <div className="slot-cell group" title={baseTitle}>
-      {piece ? (
-        <GearIcon piece={piece} size="lg" />
-      ) : (
-        <span className="text-text-faint text-[11px] uppercase tracking-wide">{SLOT_LABEL[slot]}</span>
-      )}
+      {content}
     </div>
   );
 }

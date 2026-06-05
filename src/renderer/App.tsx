@@ -273,9 +273,17 @@ export default function App() {
   if (state.loading) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="flex items-center gap-3 text-text-dim text-sm">
-          <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-          Loading OSRS data…
+        <div className="flex flex-col items-center gap-5 animate-fade-rise">
+          <h1
+            className="text-4xl font-bold font-rs tracking-tight animate-glow-pulse"
+            style={{ textShadow: '0 0 26px rgba(255, 203, 71, 0.35)' }}
+          >
+            <span className="text-accent">Gear</span>Scape
+          </h1>
+          <div className="flex items-center gap-3 text-text-dim text-sm">
+            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+            Loading OSRS data…
+          </div>
         </div>
       </div>
     );
@@ -291,7 +299,7 @@ export default function App() {
       />
       <div className="flex-1 overflow-auto">
         <div className="p-5 grid gap-5 grid-cols-[340px_1fr]">
-          <aside className="flex flex-col gap-4">
+          <aside className="reveal-stagger flex flex-col gap-4">
             <MonsterPicker
               monsters={state.monsters}
               selectedId={state.selectedMonsterId}
@@ -327,7 +335,7 @@ export default function App() {
               onDelete={state.deleteLoadout}
             />
           </aside>
-          <main className="flex flex-col gap-4 min-w-0">
+          <main className="reveal-stagger flex flex-col gap-4 min-w-0">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <StyleTabs
                 value={state.style}
@@ -404,7 +412,13 @@ function Header({
   dataMeta: DataMeta | null;
 }) {
   return (
-    <header className="flex items-center justify-between px-5 py-3 border-b border-border-strong bg-bg-soft shadow-panel">
+    <header className="relative flex items-center justify-between px-5 py-3 border-b border-border-strong bg-bg-soft shadow-panel">
+      {/* Gilt hairline — a thin gold light-rule along the header's lower edge,
+          fading out at the corners, like inlaid trim. */}
+      <span
+        className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent"
+        aria-hidden
+      />
       <div className="flex items-baseline gap-3">
         {/* Wordmark in Trebuchet MS (font-rs) — the actual font the
             RuneScape Java client used. text-shadow gives a subtle gold

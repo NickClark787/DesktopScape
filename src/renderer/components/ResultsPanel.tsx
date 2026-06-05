@@ -1,7 +1,16 @@
-import type { BestSetupCandidate, EquipmentSlot, Monster, PlayerLoadout } from '@shared/types';
+import type { BestSetupCandidate, CombatStyle, EquipmentSlot, Monster, PlayerLoadout } from '@shared/types';
 import { GearGrid } from './GearGrid';
 import { GearIcon } from './GearIcon';
 import { MonsterIcon } from './MonsterIcon';
+import { useCountUp } from '../hooks/useCountUp';
+
+// Canonical OSRS style hues — used to tint the hero block so the payoff
+// number quietly reflects which combat style won.
+const STYLE_COLOR: Record<CombatStyle, string> = {
+  melee: '#d83a3a',
+  ranged: '#3aa050',
+  magic: '#5a8fce',
+};
 
 interface Props {
   candidate: BestSetupCandidate | null;
@@ -70,19 +79,23 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
         <GearGrid equipment={loadout.equipment} onSlotClick={onSlotClick} />
         {result ? (
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-4 gap-3">
-              <Metric label="DPS" value={fmt(result.dps, 3)} primary />
-              <Metric label="Max hit" value={String(result.maxHit)} />
-              <Metric label="Accuracy" value={`${fmt(result.accuracy * 100, 1)}%`} />
-              <Metric label="Avg TTK" value={`${fmt(result.ttkSeconds, 1)}s`} />
+            <HeroDps
+              dps={result.dps}
+              style={candidate?.style ?? loadout.style}
+              attackStyle={candidate?.attackStyle ?? loadout.attackStyle}
+            />
+            <div className="grid grid-cols-3 gap-3">
+              <Metric label="Max hit" value={String(result.maxHit)} delay={60} />
+              <Metric label="Accuracy" value={`${fmt(result.accuracy * 100, 1)}%`} delay={120} />
+              <Metric label="Avg TTK" value={`${fmt(result.ttkSeconds, 1)}s`} delay={180} />
             </div>
-            <div className="text-xs text-text-faint grid grid-cols-2 gap-y-1 gap-x-6 pt-2 border-t border-border">
-              <span>Eff. attack</span><span className="text-text-dim text-right">{result.details.effectiveAttack}</span>
-              <span>Eff. strength</span><span className="text-text-dim text-right">{result.details.effectiveStrength}</span>
-              <span>Attack roll</span><span className="text-text-dim text-right">{result.details.attackRoll.toLocaleString()}</span>
-              <span>Defence roll</span><span className="text-text-dim text-right">{result.details.defenceRoll.toLocaleString()}</span>
-              <span>Weapon speed</span><span className="text-text-dim text-right">{result.weaponSpeedTicks} ticks</span>
-              <span>Avg hit</span><span className="text-text-dim text-right">{fmt(result.avgHit, 2)}</span>
+            <div className="text-xs text-text-faint grid grid-cols-2 gap-y-1 gap-x-6 pt-3 border-t border-border animate-fade-rise" style={{ animationDelay: '240ms' }}>
+              <span>Eff. attack</span><span className="text-text-dim text-right tabular-nums">{result.details.effectiveAttack}</span>
+              <span>Eff. strength</span><span className="text-text-dim text-right tabular-nums">{result.details.effectiveStrength}</span>
+              <span>Attack roll</span><span className="text-text-dim text-right tabular-nums">{result.details.attackRoll.toLocaleString()}</span>
+              <span>Defence roll</span><span className="text-text-dim text-right tabular-nums">{result.details.defenceRoll.toLocaleString()}</span>
+              <span>Weapon speed</span><span className="text-text-dim text-right tabular-nums">{result.weaponSpeedTicks} ticks</span>
+              <span>Avg hit</span><span className="text-text-dim text-right tabular-nums">{fmt(result.avgHit, 2)}</span>
             </div>
           </div>
         ) : (
@@ -109,7 +122,12 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
           <div className="panel-heading">Effects fired ({result.effects.length})</div>
           <div className="p-3 flex flex-col gap-1">
             {result.effects.map((e, i) => (
-              <div key={i} className="text-xs flex items-baseline gap-2">
+              <div
+                key={i}
+                className="text-xs flex items-baseline gap-2 animate-fade-rise"
+                style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
+              >
+                <span className="mt-1 w-1 h-1 rounded-full bg-accent/70 shrink-0 self-center" aria-hidden />
                 <span className="text-accent font-medium">{e.name}</span>
                 <span className="text-text-dim">{e.detail}</span>
               </div>
@@ -138,16 +156,49 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
   );
 }
 
-function Metric({ label, value, primary }: { label: string; value: string; primary?: boolean }) {
+/**
+ * The payoff readout. A brushed-gold DPS number (see .hero-dps) that counts
+ * up on first reveal and glides between values when you flip styles or swap a
+ * piece. The block is tinted by the winning combat style and carries a soft
+ * style-colored glow in the top-left corner for depth.
+ */
+function HeroDps({ dps, style, attackStyle }: { dps: number; style: CombatStyle; attackStyle: string }) {
+  const shown = useCountUp(dps);
+  const color = STYLE_COLOR[style];
   return (
-    <div className={[
-      'rounded-md border px-3 py-2',
-      primary ? 'bg-accent/10 border-accent/50' : 'bg-bg-raised border-border',
-    ].join(' ')}>
-      <div className={['text-[11px] uppercase tracking-wider',
-        primary ? 'text-accent' : 'text-text-faint'].join(' ')}>{label}</div>
-      <div className={['font-bold text-xl mt-0.5',
-        primary ? 'text-accent' : 'text-text'].join(' ')}>{value}</div>
+    <div
+      className="relative overflow-hidden rounded-lg border p-4 animate-fade-rise"
+      style={{
+        borderColor: `${color}55`,
+        background: `radial-gradient(130% 150% at 0% 0%, ${color}1f, rgba(46,34,24,0.35) 60%)`,
+      }}
+    >
+      {/* Style-colored accent rail down the left edge. */}
+      <span className="absolute inset-y-0 left-0 w-1" style={{ background: color }} aria-hidden />
+      <div className="flex items-start justify-between gap-3 pl-1">
+        <div className="min-w-0">
+          <div className="text-[11px] uppercase tracking-[0.2em] text-accent/80 font-semibold">Damage / second</div>
+          <div className="hero-dps text-[3.1rem]">{fmt(shown, 3)}</div>
+        </div>
+        <span
+          className="shrink-0 text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-full border"
+          style={{ color, borderColor: `${color}66`, background: `${color}14` }}
+        >
+          {style} · {attackStyle}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function Metric({ label, value, delay = 0 }: { label: string; value: string; delay?: number }) {
+  return (
+    <div
+      className="rounded-md border border-border bg-bg-raised px-3 py-2 animate-fade-rise"
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      <div className="text-[11px] uppercase tracking-wider text-text-faint">{label}</div>
+      <div className="font-bold text-xl mt-0.5 text-text tabular-nums">{value}</div>
     </div>
   );
 }
