@@ -110,8 +110,12 @@ function potionStrength(p: Potions['melee'], str: number): number {
 function potionRanged(p: Potions['ranged'], r: number): number {
   switch (p) {
     case 'ranging':         return Math.floor(r * 0.10) + 4;
+    // NMZ-only Super ranging potion is the 5 + 15% tier.
     case 'super_ranging':   return Math.floor(r * 0.15) + 5;
-    case 'divine_ranging':  return Math.floor(r * 0.15) + 5;
+    // Divine ranging gives the SAME boost as a Ranging potion (4 + 10%) —
+    // the "divine" part only re-applies it each tick. It was wrongly given
+    // the NMZ Super-ranging tier (5 + 15%), inflating ranged max hits.
+    case 'divine_ranging':  return Math.floor(r * 0.10) + 4;
     case 'overload':        return Math.floor(r * 0.16) + 6;
     default:                return 0;
   }
@@ -264,6 +268,22 @@ function stanceWeaponSpeed(baseSpeed: number, style: CombatStyle, stance: Weapon
   }
   return baseSpeed;
 }
+
+/**
+ * NPCs whose magic defence rolls off their DEFENCE level instead of the usual
+ * Magic level (https://twitter.com/JagexAsh/status/1689566945635438592).
+ * Ported from the wiki calculator's USES_DEFENCE_LEVEL_FOR_MAGIC_DEFENCE_NPC_IDS:
+ * Ice demon (reg/CM), Verzik (all phases/modes), Fragment of Seren,
+ * baboon brawlers, Prifddinas rabbit.
+ */
+const USES_DEFENCE_LEVEL_FOR_MAGIC_DEFENCE = new Set([
+  7584, 7585, // Ice demon
+  10830, 10831, 10832, 8369, 8370, 8371, 10847, 10848, 10849, // Verzik P1
+  10833, 10834, 10835, 8372, 8373, 8374, 10850, 10851, 10852, // Verzik P2/P3
+  8917, 8918, 8919, 8920, // Fragment of Seren
+  11709, 11712, // Baboon brawler
+  9118, // Rabbit (Prifddinas)
+]);
 
 // ---------- Core DPS calc ----------
 
@@ -496,7 +516,14 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
 
     effectiveAttack = Math.floor(magicLevel * pr.magic) + stance.magic + 9;
     attackRoll = effectiveAttack * (offensiveMagic + 64);
-    defenceRoll = (monster.skills.magic + 9) * (monster.defensive.magic + 64);
+    // Magic defence normally rolls off the monster's MAGIC level, but a small
+    // set of NPCs use their DEFENCE level instead (confirmed by Jagex; ported
+    // from the wiki calc's USES_DEFENCE_LEVEL_FOR_MAGIC_DEFENCE_NPC_IDS).
+    // Notably the CoX Ice demon — which is also why DWH specs help mages there.
+    const magicDefLevel = USES_DEFENCE_LEVEL_FOR_MAGIC_DEFENCE.has(monster.id)
+      ? monster.skills.def
+      : monster.skills.magic;
+    defenceRoll = (magicDefLevel + 9) * (monster.defensive.magic + 64);
     effectiveStrength = magicLevel; // magic has no "effective strength" stat
 
     // 1) Resolve base max hit + the spell/powered-staff context for bonuses
