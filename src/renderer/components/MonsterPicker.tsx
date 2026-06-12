@@ -5,13 +5,14 @@ import { MonsterIcon } from './MonsterIcon';
 
 interface Props {
   monsters: Monster[];
-  selectedId: number | null;
-  onSelect: (id: number) => void;
+  /** The resolved selected monster (id + version aware) — App owns resolution
+   *  so variants that share a game id highlight and compute correctly. */
+  selected: Monster | null;
+  onSelect: (id: number, version: string | null) => void;
 }
 
-export function MonsterPicker({ monsters, selectedId, onSelect }: Props) {
+export function MonsterPicker({ monsters, selected, onSelect }: Props) {
   const [query, setQuery] = useState('');
-  const selected = monsters.find((m) => m.id === selectedId) ?? null;
 
   const results = useMemo(() => {
     if (!query.trim()) return monsters.slice(0, 40);
@@ -45,11 +46,13 @@ export function MonsterPicker({ monsters, selectedId, onSelect }: Props) {
             <div className="px-3 py-6 text-center text-sm text-text-faint">No matches</div>
           )}
           {results.map((m) => {
-            const active = m.id === selectedId;
+            // Object identity: `selected` comes from the same monsters array,
+            // so this distinguishes same-id variants exactly.
+            const active = m === selected;
             return (
               <button
                 key={`${m.id}-${m.version}`}
-                onClick={() => onSelect(m.id)}
+                onClick={() => onSelect(m.id, m.version ?? null)}
                 className={[
                   'w-full flex items-center gap-3 px-3 py-2 text-left text-sm transition',
                   active ? 'bg-accent/10 text-accent' : 'hover:bg-bg-raised text-text',

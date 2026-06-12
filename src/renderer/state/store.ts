@@ -13,6 +13,10 @@ export interface LoadoutSnapshot {
   savedAt: number;
   style: CombatStyle;
   selectedMonsterId: number | null;
+  /** Distinguishes monster variants that share a game id (54 ids collide in
+   *  the data — e.g. Vardorvis/Yama phases). Absent in pre-existing saves;
+   *  null falls back to the first id match. */
+  selectedMonsterVersion?: string | null;
   loadout: {
     style: CombatStyle;
     attackStyle: PlayerLoadout['attackStyle'];
@@ -148,6 +152,9 @@ export interface AppState {
   equipment: EquipmentPiece[];
   monsters: Monster[];
   selectedMonsterId: number | null;
+  /** Version of the selected monster — disambiguates the 54 game ids shared
+   *  by multiple variants (Vardorvis/Yama phases etc.). Null = first match. */
+  selectedMonsterVersion: string | null;
   style: CombatStyle;
   loadout: PlayerLoadout;
   /** Pinned stance — null means "let the optimizer pick". */
@@ -194,7 +201,7 @@ export interface AppState {
   loadLoadout: (name: string) => void;
   deleteLoadout: (name: string) => void;
   setStyle: (s: CombatStyle) => void;
-  setMonster: (id: number) => void;
+  setMonster: (id: number, version?: string | null) => void;
   setSkill: (k: keyof PlayerLoadout['skills'], v: number) => void;
   togglePrayer: (k: keyof Prayers) => void;
   setPotion: <K extends keyof Potions>(k: K, v: Potions[K]) => void;
@@ -226,6 +233,7 @@ export const useApp = create<AppState>((set) => ({
   equipment: [],
   monsters: [],
   selectedMonsterId: null,
+  selectedMonsterVersion: null,
   style: 'melee',
   stanceOverride: null,
   attackStyleOverride: null,
@@ -304,6 +312,7 @@ export const useApp = create<AppState>((set) => ({
       savedAt: Date.now(),
       style: st.style,
       selectedMonsterId: st.selectedMonsterId,
+      selectedMonsterVersion: st.selectedMonsterVersion,
       loadout: {
         style: st.loadout.style,
         attackStyle: st.loadout.attackStyle,
@@ -339,6 +348,7 @@ export const useApp = create<AppState>((set) => ({
     return {
       style: snap.style,
       selectedMonsterId: snap.selectedMonsterId,
+      selectedMonsterVersion: snap.selectedMonsterVersion ?? null,
       stanceOverride: snap.stanceOverride,
       attackStyleOverride: snap.attackStyleOverride,
       loadedLoadoutName: name,
@@ -392,7 +402,7 @@ export const useApp = create<AppState>((set) => ({
       // single source of truth for "what gear shows on this tab".
     },
   })),
-  setMonster: (id) => set({ selectedMonsterId: id }),
+  setMonster: (id, version) => set({ selectedMonsterId: id, selectedMonsterVersion: version ?? null }),
   setSkill: (k, v) => set((st) => ({ loadout: { ...st.loadout, skills: { ...st.loadout.skills, [k]: v } } })),
   togglePrayer: (k) => set((st) => ({ loadout: { ...st.loadout, prayers: { ...st.loadout.prayers, [k]: !st.loadout.prayers[k] } } })),
   setPotion: (k, v) => set((st) => ({ loadout: { ...st.loadout, potions: { ...st.loadout.potions, [k]: v } } })),

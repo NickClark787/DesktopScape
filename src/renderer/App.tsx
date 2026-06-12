@@ -51,8 +51,17 @@ export default function App() {
   }, []);
 
   const selectedMonster = useMemo(
-    () => state.monsters.find((m) => m.id === state.selectedMonsterId) ?? null,
-    [state.monsters, state.selectedMonsterId],
+    () => {
+      if (state.selectedMonsterId === null) return null;
+      // 54 game ids are shared by multiple monster variants, so resolution
+      // needs the version too. Legacy selections (version null) and stale
+      // versions fall back to the first id match, as before.
+      const byBoth = state.selectedMonsterVersion !== null
+        ? state.monsters.find((m) => m.id === state.selectedMonsterId && m.version === state.selectedMonsterVersion)
+        : undefined;
+      return byBoth ?? state.monsters.find((m) => m.id === state.selectedMonsterId) ?? null;
+    },
+    [state.monsters, state.selectedMonsterId, state.selectedMonsterVersion],
   );
 
   // Per-style DPS for the tabs — fed by the candidate cache. Empty when
@@ -115,9 +124,9 @@ export default function App() {
    * be the user's intent for Zulrah, and the picker's per-row DPS column
    * will recompute against the new target on its own.
    */
-  function handleMonsterSelect(id: number) {
+  function handleMonsterSelect(id: number, version: string | null) {
     setCandidates({});
-    state.setMonster(id);
+    state.setMonster(id, version);
   }
 
   /**
@@ -371,7 +380,7 @@ export default function App() {
           <aside className="reveal-stagger flex flex-col gap-4">
             <MonsterPicker
               monsters={state.monsters}
-              selectedId={state.selectedMonsterId}
+              selected={selectedMonster}
               onSelect={handleMonsterSelect}
             />
             <RaidPanel
