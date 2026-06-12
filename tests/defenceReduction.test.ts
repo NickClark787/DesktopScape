@@ -67,3 +67,40 @@ describe('applyDefenceReduction', () => {
     expect(r.effect!.name).toBe('Defence reduction');
   });
 });
+
+describe('per-boss defence floors (wiki getDefenceFloor table)', () => {
+  const akkha = monsters.find((m) => m.id === 11789)!; // ToA Akkha — floor 70
+  const nex = monsters.find((m) => m.id === 11278)!; // Nex — floor 250
+  const verzik = monsters.find((m) => m.id === 8369)!; // Verzik P1 — immune
+
+  it('Akkha cannot be drained below 70', () => {
+    expect(akkha.skills.def).toBeGreaterThan(70);
+    expect(def(akkha, { dwh: 20 })).toBe(70);
+    expect(def(akkha, { bgs: 9999 })).toBe(70);
+  });
+
+  it('Nex cannot be drained below 250', () => {
+    expect(nex.skills.def).toBeGreaterThan(250);
+    expect(def(nex, { dwh: 20, bgs: 999 })).toBe(250);
+  });
+
+  it('Verzik is fully immune to defence drain', () => {
+    expect(def(verzik, { dwh: 5, elderMaul: 5, bgs: 999 })).toBe(verzik.skills.def);
+  });
+
+  it('partial drains above the floor still apply normally', () => {
+    // One DWH on Akkha: def - 30% stays above 70 only if base is high enough;
+    // assert the exact reference math rather than the floor.
+    const expected = Math.max(70, akkha.skills.def - Math.trunc((akkha.skills.def * 3) / 10));
+    expect(def(akkha, { dwh: 1 })).toBe(expected);
+  });
+
+  it('surfaces the binding floor in the effect detail', () => {
+    const r = applyDefenceReductionDescribed(akkha, { ...base, dwh: 20 });
+    expect(r.effect!.detail).toContain('floor 70');
+  });
+
+  it('generic monsters still drain to 0', () => {
+    expect(def(abyssal, { bgs: 999 })).toBe(0);
+  });
+});

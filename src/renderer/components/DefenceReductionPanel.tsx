@@ -1,5 +1,5 @@
 import type { DefenceReduction, Monster } from '@shared/types';
-import { applyDefenceReduction } from '../../engine/defenceReduction';
+import { applyDefenceReduction, defenceFloor } from '../../engine/defenceReduction';
 
 interface Props {
   value: DefenceReduction | undefined;
@@ -57,7 +57,7 @@ export function DefenceReductionPanel({ value, monster, onChange }: Props) {
       <div className="p-3 flex flex-col gap-3">
         {/* Effective-defence readout */}
         {monster ? (
-          <div className="text-xs text-text-dim tabular-nums flex items-center gap-2">
+          <div className="text-xs text-text-dim tabular-nums flex items-center gap-2 flex-wrap">
             <span>Target def</span>
             <span className="text-text">{baseDef}</span>
             {active && (
@@ -67,6 +67,15 @@ export function DefenceReductionPanel({ value, monster, onChange }: Props) {
                 <span className="text-emerald-400">(−{pctOff}%)</span>
               </>
             )}
+            {(() => {
+              const floor = defenceFloor(monster);
+              if (floor <= 0) return null;
+              return floor >= (baseDef ?? 0) ? (
+                <span className="text-amber-400">immune to def drain</span>
+              ) : (
+                <span className="text-text-faint">floor {floor}</span>
+              );
+            })()}
           </div>
         ) : (
           <p className="text-xs text-text-faint">Pick a monster to see its reduced defence.</p>
