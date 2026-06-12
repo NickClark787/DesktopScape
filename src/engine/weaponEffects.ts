@@ -99,13 +99,16 @@ export function boltProcAvgPerSwing(
     return 0.90 * normalAvg + 0.10 * procAvg;
   }
 
-  // Onyx (e) — Life Leech: 10% proc, +20% max hit; lifesteal doesn't change damage dealt.
-  // ZCB: max hit mult 1.32.
+  // Onyx (e) — Life Leech: 11% proc, +20% max hit; lifesteal doesn't change damage dealt.
+  // ZCB: max hit mult 1.32. Proc only fires on a landing hit, and is ineffective
+  // vs undead (no life to leech). Matches lib/dists/bolts.ts onyxBolts.
   if (ONYX_BOLTS_RE.test(ammo.name)) {
+    const undead = (monster.attributes || []).some((a) => a.toLowerCase() === 'undead');
+    if (undead) return normalAvg;
     const mult = zcb ? 1.32 : 1.20;
     const procMax = Math.trunc(maxHit * mult);
     const procAvg = accuracy * (procMax / 2);
-    return 0.90 * normalAvg + 0.10 * procAvg;
+    return 0.89 * normalAvg + 0.11 * procAvg;
   }
 
   // Dragonstone (e) — Dragon's Breath: 6% proc, +20% max hit. Ineffective vs dragons/fire-immune.
@@ -294,17 +297,17 @@ export function magicWeaponMult(
 ): MagicWeaponMult {
   if (!spell) return MAGIC_MULT_IDENTITY;
 
-  // Tome of fire — +50% dmg & accuracy for fire spells.
+  // Tomes give +10% damage on their matching element (post magic-rebalance).
+  // Only Tome of water also gives accuracy (+20%); fire/earth give no accuracy.
+  // Matches osrs-dps-calc (PlayerVsNPCCalc: dmg x11/10; water acc x6/5).
   if (shield && /^Tome of fire/i.test(shield.name) && spell.element === 'fire') {
-    return { dmgMult: 1.5, accMult: 1.5 };
+    return { dmgMult: 1.1, accMult: 1 };
   }
-  // Tome of water — +20% dmg & accuracy for water spells.
   if (shield && /^Tome of water/i.test(shield.name) && spell.element === 'water') {
-    return { dmgMult: 1.2, accMult: 1.2 };
+    return { dmgMult: 1.1, accMult: 1.2 };
   }
-  // Tome of earth — +20% dmg & accuracy for earth spells.
   if (shield && /^Tome of earth/i.test(shield.name) && spell.element === 'earth') {
-    return { dmgMult: 1.2, accMult: 1.2 };
+    return { dmgMult: 1.1, accMult: 1 };
   }
 
   if (!weapon) return MAGIC_MULT_IDENTITY;
@@ -369,11 +372,17 @@ const RANGED_IDENTITY: RangedWeaponMult = { dmgMult: 1, accMult: 1 };
  */
 export function twistedBowMult(weapon: EquipmentPiece | null, monster: Monster): RangedWeaponMult {
   if (!weapon || weapon.name !== 'Twisted bow') return RANGED_IDENTITY;
-  const m = Math.min(monster.skills.magic, 250);
-  const accRaw = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc(((3 * m / 10 - 100) ** 2) / 100);
-  const dmgRaw = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc(((3 * m / 10 - 140) ** 2) / 100);
-  const accPct = Math.max(0, Math.min(140, accRaw));
-  const dmgPct = Math.max(0, Math.min(250, dmgRaw));
+  // Scaling magic = max(Magic level, magic attack bonus), capped at 250 — or 350
+  // for Xerician (Chambers of Xeric) monsters, the bow's signature content
+  // (PlayerVsNPCCalc L596-599 / L778-781 + tbowScaling L2616-2625).
+  const xerician = (monster.attributes || []).some((a) => a.toLowerCase() === 'xerician');
+  const cap = xerician ? 350 : 250;
+  const m = Math.min(cap, Math.max(monster.skills.magic, monster.offensive.magic));
+  // trunc(3m/10) BEFORE squaring, and no output clamp — the formula is naturally
+  // bounded by the magic cap, matching the wiki calc's tbowScaling verbatim.
+  const t = Math.trunc((3 * m) / 10);
+  const accPct = 140 + Math.trunc((3 * m - 10) / 100) - Math.trunc((t - 100) ** 2 / 100);
+  const dmgPct = 250 + Math.trunc((3 * m - 14) / 100) - Math.trunc((t - 140) ** 2 / 100);
   return { dmgMult: dmgPct / 100, accMult: accPct / 100 };
 }
 
@@ -496,7 +505,9 @@ export function dragonHunterMult(
 ): { dmgMult: number; accMult: number } {
   if (!weapon || !isDragon(monster)) return { dmgMult: 1, accMult: 1 };
   if (weapon.name === 'Dragon hunter lance') return { dmgMult: 1.20, accMult: 1.20 };
-  if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.30, accMult: 1.30 };
+  // DHCB: +30% accuracy (×13/10) but only +25% damage (×5/4) — the wiki calc
+  // applies ×5/4 to max hit (PlayerVsNPCCalc L788-790), not a symmetric +30%.
+  if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.25, accMult: 1.30 };
   if (weapon.name === 'Dragon hunter wand') return { dmgMult: 1.20, accMult: 1.50 };
   return { dmgMult: 1, accMult: 1 };
 }
@@ -672,15 +683,47 @@ export function voidBonus(
     return { dmgMult: dmg, accMult: 1.10 };
   }
   if (style === 'magic' && set.helm === 'mage') {
-    // Regular Void mage helm: +30% magic accuracy, no damage bonus.
-    // Elite Void mage helm: +45% magic accuracy + 2.5% magic damage.
-    // Earlier code returned +45% accuracy for both tiers, silently buffing
-    // the regular set by an extra 15% magic accuracy.
-    const dmg = set.tier === 'elite' ? 1.025 : 1.00;
-    const acc = set.tier === 'elite' ? 1.45 : 1.30;
-    return { dmgMult: dmg, accMult: acc };
+    // Full magic void (regular OR elite) gives +45% magic accuracy — the wiki
+    // calc applies ×29/20 to the effective level for any `isWearingMagicVoid`
+    // (BaseCalc.isWearingMagicVoid, PlayerVsNPCCalc:862). The damage side is
+    // NOT a trailing multiplier: the elite set instead adds a flat +5% magic
+    // damage to the gear `magic_str` bonus *after* the Tumeken's-shadow triple
+    // (Equipment.ts:428). That additive piece is handled by
+    // `eliteVoidMageMagicStr` in the formula, so here damage is identity.
+    return { dmgMult: 1, accMult: 1.45 };
   }
   return { dmgMult: 1, accMult: 1 };
+}
+
+/**
+ * Ranged Void effective-LEVEL multipliers (ranger helm set). The wiki calc
+ * scales the effective ranged ATTACK and STRENGTH levels — before the
+ * `×(bonus+64)` step — rather than the final rolls, and truncates after each
+ * (PlayerVsNPCCalc.getPlayerMaxRangedAttackRoll L570-572 + MaxHit L727-731):
+ *   accuracy: ×11/10 for any ranged void (regular or elite)
+ *   strength: ×11/10 regular, ×9/8 (i.e. +12.5%) elite
+ * Applying these as trailing multipliers on the roll/max-hit (as a naive
+ * `voidBonus`-style factor would) drifts by ±1 vs the game. Returns null when a
+ * full ranged void set isn't worn; callers apply the factors with Math.trunc.
+ */
+export function rangedVoidLevelFactors(
+  eq: PlayerLoadout['equipment'],
+): { acc: [number, number]; str: [number, number]; tier: 'void' | 'elite' } | null {
+  const set = detectVoidSet(eq);
+  if (!set || set.helm !== 'ranger') return null;
+  return { acc: [11, 10], str: set.tier === 'elite' ? [9, 8] : [11, 10], tier: set.tier };
+}
+
+/**
+ * Elite Void mage full set adds a flat +5% magic damage, expressed in the
+ * same tenths-of-a-percent units as `bonuses.magic_str` (i.e. +50). The wiki
+ * calc adds this to the aggregate magic damage bonus *after* the Tumeken's
+ * shadow ×3 multiplier and its 1000-cap, so it can push the total past +100%
+ * (Equipment.ts:405-433). Returns 0 unless the full elite mage set is worn.
+ */
+export function eliteVoidMageMagicStr(eq: PlayerLoadout['equipment']): number {
+  const set = detectVoidSet(eq);
+  return set && set.helm === 'mage' && set.tier === 'elite' ? 50 : 0;
 }
 
 // -------------------------------------------------------------------------
@@ -849,6 +892,7 @@ function isUndead(monster: Monster): boolean {
 const SALVE_RE = /^Salve amulet\s*(\(e\)|\(i\)|\(ei\))?$/i;
 const SLAYER_HELM_I_RE = /^Slayer helmet\s*\(i\)/i;
 const BLACK_MASK_I_RE = /^Black mask\s*\(i\)/i;
+const AVARICE_RE = /^Amulet of avarice/i;
 
 /**
  * Salve amulet / Slayer helm / Black mask damage and accuracy bonuses.
@@ -878,6 +922,13 @@ export function targetTypeBonus(
     if (!variant) {
       if (style === 'melee') return { dmgMult: 7 / 6, accMult: 7 / 6 };
     }
+  }
+
+  // Amulet of avarice — +20% dmg & acc vs Revenants (melee/ranged multiplicative,
+  // like salve). Magic avarice is handled additively in the magic branch of
+  // calcDps, so it's excluded here. Mutually exclusive with salve/slayer.
+  if (style !== 'magic' && neck && AVARICE_RE.test(neck.name) && monster.name.startsWith('Revenant')) {
+    return { dmgMult: 1.2, accMult: 1.2 };
   }
 
   if (loadout.onSlayerTask && head && (SLAYER_HELM_I_RE.test(head.name) || BLACK_MASK_I_RE.test(head.name))) {
