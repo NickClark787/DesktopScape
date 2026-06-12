@@ -155,12 +155,22 @@ export interface OptimizerOptions {
   style: CombatStyle;
   attackStyle: PlayerLoadout['attackStyle'];
   shortlistPerSlot?: number;
-  requireStats?: Partial<PlayerLoadout['skills']>;
   ownedOnly?: Set<number> | null;
+  /** Items the user never wants suggested (blacklist). */
+  excludeIds?: Set<number> | null;
   /** Exclude Deadman/Bounty Hunter/Leagues/quest-locked variants when true (default true). */
   excludeModeVariants?: boolean;
   /** Pin a stance instead of letting the optimizer pick. Skips the final stance sweep. */
   forceStance?: WeaponStance;
+  /**
+   * Budget mode: cap the total GE cost of the recommended setup. Requires
+   * `prices`. Items in `ownedFree` cost 0 (already owned); unpriced items the
+   * player doesn't own are treated as unbuyable (untradeables like a fire
+   * cape can't be purchased) and are dropped from the search.
+   */
+  budget?: number | null;
+  prices?: Map<number, number> | null;
+  ownedFree?: Set<number> | null;
 }
 
 // Substrings on `piece.version` that indicate a game-mode variant most players can't equip.
@@ -211,6 +221,21 @@ export function findBestSetup(
   const shortlistPerSlot = opts.shortlistPerSlot ?? 4;
   const { style, attackStyle } = opts;
 
+  // Budget mode: each piece costs its GE price, owned pieces are free, and
+  // unpriced pieces the player doesn't own are unbuyable (untradeables).
+  const budgetActive = opts.budget != null && !!opts.prices;
+  const budget = opts.budget ?? Infinity;
+  const pieceCost = (p: EquipmentPiece): number => {
+    if (!budgetActive) return 0;
+    if (opts.ownedFree?.has(p.id)) return 0;
+    return opts.prices!.get(p.id) ?? Infinity;
+  };
+  const equipmentCost = (eq: PlayerLoadout['equipment']): number => {
+    let sum = 0;
+    for (const p of Object.values(eq)) if (p) sum += pieceCost(p);
+    return sum;
+  };
+
   // Bucket candidates by slot, keep a shortlist of top-N per slot by heuristic pieceScore.
   const bySlot: Record<string, EquipmentPiece[]> = {};
   for (const slot of EQUIPMENT_SLOTS) bySlot[slot] = [];
@@ -218,6 +243,8 @@ export function findBestSetup(
   const excludeVariants = opts.excludeModeVariants ?? true;
   for (const piece of equipment) {
     if (opts.ownedOnly && !opts.ownedOnly.has(piece.id)) continue;
+    if (opts.excludeIds?.has(piece.id)) continue;
+    if (budgetActive && pieceCost(piece) > budget) continue;
     if (excludeVariants && isModeVariant(piece)) continue;
     if (!meetsStyle(piece, style)) continue;
     if (piece.slot === 'weapon' && !weaponMatchesStyle(piece, style, attackStyle)) continue;
@@ -311,13 +338,21 @@ export function findBestSetup(
     return normalizeMutex(next);
   }
 
+  // Sweep order. In budget mode the weapon goes first: it dominates DPS, so
+  // it should claim budget before armour slots greedily eat it. (Unbudgeted
+  // searches keep the canonical order to preserve existing behavior.)
+  const sweepOrder = budgetActive
+    ? ([...EQUIPMENT_SLOTS].sort((a, b) => (a === 'weapon' ? -1 : b === 'weapon' ? 1 : a === 'ammo' ? -1 : b === 'ammo' ? 1 : 0)))
+    : EQUIPMENT_SLOTS;
+
   // Initial greedy pass
-  for (const slot of EQUIPMENT_SLOTS) {
+  for (const slot of sweepOrder) {
     let bestPiece: EquipmentPiece | null = null;
     let bestDps = calcDps(current, monster).dps;
     for (const piece of bySlot[slot]) {
       const eq = tryEquip(current, slot, piece);
       if (!eq) continue;
+      if (budgetActive && equipmentCost(eq) > budget) continue;
       const d = calcDps({ ...current, equipment: eq }, monster).dps;
       if (d > bestDps) {
         bestDps = d;
@@ -331,9 +366,12 @@ export function findBestSetup(
   }
 
   // Refinement pass — re-sweep each slot since earlier choices may have made a
-  // different later choice optimal (e.g. swap shield for off-hand once weapon is chosen).
-  for (let pass = 0; pass < 2; pass++) {
-    for (const slot of EQUIPMENT_SLOTS) {
+  // different later choice optimal (e.g. swap shield for off-hand once weapon is
+  // chosen). Budget mode gets an extra pass: freeing gold in one slot can only
+  // be re-spent in another on a subsequent sweep.
+  const passes = budgetActive ? 3 : 2;
+  for (let pass = 0; pass < passes; pass++) {
+    for (const slot of sweepOrder) {
       let bestPiece: EquipmentPiece | null = current.equipment[slot] ?? null;
       let bestDps = calcDps(current, monster).dps;
       // Include null (no item) option — also re-normalize for mutex (e.g.
@@ -347,6 +385,7 @@ export function findBestSetup(
       for (const piece of bySlot[slot]) {
         const eq = tryEquip(current, slot, piece);
         if (!eq) continue;
+        if (budgetActive && equipmentCost(eq) > budget) continue;
         const d = calcDps({ ...current, equipment: eq }, monster).dps;
         if (d > bestDps) { bestDps = d; bestPiece = piece; }
       }
@@ -377,6 +416,7 @@ export function findBestSetup(
     attackStyle,
     spell: current.spell ?? null,
     stance: bestStance,
+    totalCost: budgetActive ? equipmentCost(current.equipment) : undefined,
   };
 }
 

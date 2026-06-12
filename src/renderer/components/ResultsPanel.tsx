@@ -3,6 +3,7 @@ import { GearGrid } from './GearGrid';
 import { GearIcon } from './GearIcon';
 import { MonsterIcon } from './MonsterIcon';
 import { useCountUp } from '../hooks/useCountUp';
+import { formatGp } from '../utils/gp';
 
 // Canonical OSRS style hues — used to tint the hero block so the payoff
 // number quietly reflects which combat style won.
@@ -60,7 +61,12 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
       <div className="panel-heading flex items-center justify-between">
         <span>{candidate ? 'Recommended setup' : 'Loadout'}</span>
         {candidate && (
-          <span className="text-text-faint normal-case">{candidate.style} · {candidate.attackStyle}</span>
+          <span className="text-text-faint normal-case">
+            {candidate.style} · {candidate.attackStyle}
+            {candidate.totalCost !== undefined && (
+              <span className="text-accent/80"> · costs {formatGp(candidate.totalCost)}</span>
+            )}
+          </span>
         )}
       </div>
       {target && (

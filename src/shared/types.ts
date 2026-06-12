@@ -261,4 +261,6 @@ export interface BestSetupCandidate {
   spell?: string | null;
   /** Stance picked by the optimizer. */
   stance?: WeaponStance;
+  /** Total GE cost of the setup (owned items = 0). Only set in budget mode. */
+  totalCost?: number;
 }

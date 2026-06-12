@@ -15,6 +15,8 @@ import { LoadoutManagerPanel } from './components/LoadoutManagerPanel';
 import { DataStalenessBadge } from './components/DataStalenessBadge';
 import { GearPickerModal } from './components/GearPickerModal';
 import { UpgradeAdvisorPanel } from './components/UpgradeAdvisorPanel';
+import { ConstraintsPanel } from './components/ConstraintsPanel';
+import { DpsGraphPanel } from './components/DpsGraphPanel';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine/bestSetup';
 import type { UpgradeSuggestion } from '../engine/upgradeAdvisor';
 import { calcDps } from '../engine/formulas';
@@ -139,12 +141,22 @@ export default function App() {
     ownedOnly: Set<number> | null,
   ): BestSetupCandidate | null {
     const styled: PlayerLoadout = { ...base, style, attackStyle: style === 'melee' ? 'slash' : style };
+    // Shared search constraints: the avoid-list always applies; budget mode
+    // kicks in only when a budget is set AND prices are loaded (owned items
+    // are free, unpriced+unowned items unbuyable).
+    const constraints = {
+      excludeIds: state.excludedIds.size ? state.excludedIds : null,
+      budget: state.budget,
+      prices: state.budget != null ? state.prices : null,
+      ownedFree: state.ownedIds,
+    };
     if (style === 'melee') {
       return findBestMeleeSetup(styled, monster, state.equipment, {
         shortlistPerSlot: 5,
         forceStance,
         ownedOnly,
         forceAttackStyle: (forceAttackStyle as 'stab' | 'slash' | 'crush') ?? undefined,
+        ...constraints,
       });
     }
     if (style === 'magic') {
@@ -152,10 +164,11 @@ export default function App() {
         shortlistPerSlot: 5,
         forceStance,
         ownedOnly,
+        ...constraints,
       });
     }
     return findBestSetup(styled, monster, state.equipment, {
-      style, attackStyle: style, shortlistPerSlot: 5, forceStance, ownedOnly,
+      style, attackStyle: style, shortlistPerSlot: 5, forceStance, ownedOnly, ...constraints,
     });
   }
 
@@ -388,6 +401,18 @@ export default function App() {
               onClear={state.clearOwned}
               onToggleEnabled={state.setOwnedFilterEnabled}
             />
+            <ConstraintsPanel
+              equipment={state.equipment}
+              excludedIds={state.excludedIds}
+              onAddExcluded={state.addExcluded}
+              onRemoveExcluded={state.removeExcluded}
+              onClearExcluded={state.clearExcluded}
+              budget={state.budget}
+              onBudgetChange={state.setBudget}
+              pricesLoaded={!!state.prices}
+              loadingPrices={state.loadingPrices}
+              onFetchPrices={state.fetchPrices}
+            />
             <LoadoutManagerPanel
               equipment={state.equipment}
               saved={state.savedLoadouts}
@@ -447,6 +472,7 @@ export default function App() {
               onOptimize={findUpgradeOptimum}
               onApply={applyUpgrade}
             />
+            <DpsGraphPanel loadout={state.loadout} target={selectedMonster} />
           </main>
         </div>
       </div>
@@ -456,6 +482,7 @@ export default function App() {
           equipment={state.equipment}
           current={state.loadout.equipment[pickerSlot] ?? null}
           ownedOnly={state.ownedFilterEnabled ? state.ownedIds : null}
+          excludedIds={state.excludedIds}
           // The picker uses this loadout as the substitution base for delta
           // calc. Fold in the displayed candidate's stance/attackStyle so the
           // baseline matches what the user is actually looking at.

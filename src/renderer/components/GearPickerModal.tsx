@@ -15,6 +15,8 @@ interface Props {
   current: EquipmentPiece | null | undefined;
   /** Optional owned-only restriction. When non-null, only owned items appear. */
   ownedOnly: Set<number> | null;
+  /** Avoid-list: items the user never wants suggested. Hidden from the picker. */
+  excludedIds?: Set<number> | null;
   /**
    * Effective loadout — used as the substitution base when computing per-row
    * DPS deltas. Pass the same loadout `App.pickSlot` would apply (i.e. with
@@ -42,7 +44,7 @@ const SLOT_TITLE: Record<Slot, string> = {
   body: 'Body', shield: 'Shield', legs: 'Legs', hands: 'Hands', feet: 'Feet', ring: 'Ring',
 };
 
-export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, target, onPick, onClose }: Props) {
+export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedIds, loadout, target, onPick, onClose }: Props) {
   const [query, setQuery] = useState('');
   // Default sort to DPS-desc when we have a target — that's almost always
   // what the user is trying to do ("show me upgrades"). Falls back to the
@@ -69,8 +71,9 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, loadout, 
       p.slot === slot || (slot === 'weapon' && p.slot === '2h');
     let pool = equipment.filter(slotMatches);
     if (ownedOnly) pool = pool.filter((p) => ownedOnly.has(p.id));
+    if (excludedIds?.size) pool = pool.filter((p) => !excludedIds.has(p.id));
     return pool;
-  }, [equipment, slot, ownedOnly]);
+  }, [equipment, slot, ownedOnly, excludedIds]);
 
   const results = useMemo(() => {
     if (!query.trim()) return candidates.slice(0, 200);

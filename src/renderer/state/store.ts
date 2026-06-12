@@ -55,6 +55,36 @@ function saveOwnedFilterEnabled(v: boolean): void {
   try { window.localStorage.setItem(OWNED_FILTER_LS_KEY, v ? '1' : '0'); } catch { /* ignore */ }
 }
 
+const EXCLUDED_LS_KEY = 'gearscape:excludedIds';
+const BUDGET_LS_KEY = 'gearscape:budget';
+
+function loadExcludedIds(): Set<number> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = window.localStorage.getItem(EXCLUDED_LS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr.filter((x): x is number => typeof x === 'number') : []);
+  } catch { return new Set(); }
+}
+function saveExcludedIds(ids: Set<number>): void {
+  if (typeof window === 'undefined') return;
+  try { window.localStorage.setItem(EXCLUDED_LS_KEY, JSON.stringify([...ids])); } catch { /* ignore quota */ }
+}
+function loadBudget(): number | null {
+  if (typeof window === 'undefined') return null;
+  const raw = window.localStorage.getItem(BUDGET_LS_KEY);
+  const n = raw ? Number(raw) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+function saveBudget(v: number | null): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (v == null) window.localStorage.removeItem(BUDGET_LS_KEY);
+    else window.localStorage.setItem(BUDGET_LS_KEY, String(v));
+  } catch { /* ignore */ }
+}
+
 const PRICES_LS_KEY = 'gearscape:prices';
 const PRICES_AT_LS_KEY = 'gearscape:pricesUpdatedAt';
 
@@ -136,6 +166,14 @@ export interface AppState {
   removeOwned: (id: number) => void;
   clearOwned: () => void;
   setOwnedFilterEnabled: (v: boolean) => void;
+  /** Blacklist: items the optimizer/picker must never suggest. Persisted. */
+  excludedIds: Set<number>;
+  addExcluded: (id: number) => void;
+  removeExcluded: (id: number) => void;
+  clearExcluded: () => void;
+  /** Budget cap (gp) for Find best setup, or null = unconstrained. Persisted. */
+  budget: number | null;
+  setBudget: (v: number | null) => void;
   /** Live GE price estimate per item id (avg of high/low), or null until
    *  fetched. Persisted to localStorage so it's available on next launch. */
   prices: Map<number, number> | null;
@@ -216,6 +254,22 @@ export const useApp = create<AppState>((set) => ({
   }),
   clearOwned: () => { saveOwnedIds(new Set()); set({ ownedIds: new Set() }); },
   setOwnedFilterEnabled: (v) => { saveOwnedFilterEnabled(v); set({ ownedFilterEnabled: v }); },
+  excludedIds: loadExcludedIds(),
+  addExcluded: (id) => set((st) => {
+    const next = new Set(st.excludedIds);
+    next.add(id);
+    saveExcludedIds(next);
+    return { excludedIds: next };
+  }),
+  removeExcluded: (id) => set((st) => {
+    const next = new Set(st.excludedIds);
+    next.delete(id);
+    saveExcludedIds(next);
+    return { excludedIds: next };
+  }),
+  clearExcluded: () => { saveExcludedIds(new Set()); set({ excludedIds: new Set() }); },
+  budget: loadBudget(),
+  setBudget: (v) => { saveBudget(v); set({ budget: v }); },
   prices: loadPrices(),
   pricesUpdatedAt: loadPricesAt(),
   loadingPrices: false,
