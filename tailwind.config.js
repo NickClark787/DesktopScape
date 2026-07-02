@@ -136,7 +136,7 @@ export default {
         // a pre-painted gradient band moved with transform only.
         'shimmer-sweep': {
           '0%': { transform: 'translateX(-130%) skewX(-12deg)' },
-          '100%': { transform: 'translateX(240%) skewX(-12deg)' },
+          '100%': { transform: 'translateX(400%) skewX(-12deg)' },
         },
         // Idle orb bob — very slow, very low amplitude.
         'orb-bob': {
