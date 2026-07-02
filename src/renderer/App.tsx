@@ -349,8 +349,8 @@ export default function App() {
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-5 animate-fade-rise">
           <h1
-            className="text-4xl font-bold font-rs tracking-tight animate-glow-pulse"
-            style={{ textShadow: '0 0 26px rgba(255, 203, 71, 0.35)' }}
+            className="text-4xl font-bold font-display tracking-wide animate-glow-pulse"
+            style={{ textShadow: '0 0 26px rgba(255, 215, 0, 0.35)' }}
           >
             <span className="text-accent">Gear</span>Scape
           </h1>
@@ -526,16 +526,15 @@ function Header({
         aria-hidden
       />
       <div className="flex items-baseline gap-3">
-        {/* Wordmark in Trebuchet MS (font-rs) — the actual font the
-            RuneScape Java client used. text-shadow gives a subtle gold
-            glow underneath the title to feel like illuminated chrome. */}
+        {/* Wordmark carved in Cinzel with a gold underglow; the subtitle is
+            pixel chrome — the two theme faces introduced together. */}
         <h1
-          className="text-2xl font-bold font-rs tracking-tight"
-          style={{ textShadow: '0 0 18px rgba(255, 203, 71, 0.25)' }}
+          className="text-2xl font-bold font-display tracking-wide"
+          style={{ textShadow: '0 0 18px rgba(255, 215, 0, 0.28)' }}
         >
           <span className="text-accent">Gear</span>Scape
         </h1>
-        <span className="text-[11px] text-accent/70 uppercase tracking-[0.28em] font-rs font-bold">
+        <span className="text-[11px] text-accent/80 uppercase tracking-[0.24em] font-pixel">
           Best Setup
         </span>
       </div>

@@ -172,7 +172,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
           <span>Pick a {SLOT_TITLE[slot].toLowerCase()}</span>
           <button
             onClick={onClose}
-            className="text-text-faint hover:text-text px-2"
+            className="text-parchment-ink-dim hover:text-parchment-ink px-2"
             title="Close (Esc)"
             aria-label="Close picker"
           >×</button>

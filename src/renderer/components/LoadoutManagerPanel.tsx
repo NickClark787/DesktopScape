@@ -73,7 +73,7 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>Saved loadouts</span>
-        <span className="text-text-faint normal-case">{entries.length} saved</span>
+        <span className="panel-heading-meta">{entries.length} saved</span>
       </div>
       <div className="p-3 flex flex-col gap-3">
         <div className="flex gap-2">

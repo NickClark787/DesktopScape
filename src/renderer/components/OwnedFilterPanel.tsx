@@ -70,7 +70,7 @@ export function OwnedFilterPanel({
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>Owned-only filter</span>
-        <span className="text-text-faint normal-case">{ownedIds.size} item{ownedIds.size === 1 ? '' : 's'}</span>
+        <span className="panel-heading-meta">{ownedIds.size} item{ownedIds.size === 1 ? '' : 's'}</span>
       </div>
       <div className="p-3 flex flex-col gap-3">
         <label className="flex items-center gap-2 text-sm cursor-pointer">

@@ -61,10 +61,10 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
       <div className="panel-heading flex items-center justify-between">
         <span>{candidate ? 'Recommended setup' : 'Loadout'}</span>
         {candidate && (
-          <span className="text-text-faint normal-case">
+          <span className="panel-heading-meta">
             {candidate.style} · {candidate.attackStyle}
             {candidate.totalCost !== undefined && (
-              <span className="text-accent/80"> · costs {formatGp(candidate.totalCost)}</span>
+              <span className="font-semibold"> · costs {formatGp(candidate.totalCost)}</span>
             )}
           </span>
         )}

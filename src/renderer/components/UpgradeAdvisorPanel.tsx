@@ -120,7 +120,7 @@ export function UpgradeAdvisorPanel({
       <div className="panel-heading flex items-center justify-between">
         <span>Upgrade advisor</span>
         {report && !report.atOptimum && (
-          <span className="text-text-faint normal-case">{report.suggestions.length} found</span>
+          <span className="panel-heading-meta">{report.suggestions.length} found</span>
         )}
       </div>
 

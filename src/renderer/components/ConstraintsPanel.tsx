@@ -69,7 +69,7 @@ export function ConstraintsPanel({
       <div className="panel-heading flex items-center justify-between">
         <span>Search constraints</span>
         {(budget != null || excludedIds.size > 0) && (
-          <span className="text-text-faint normal-case">
+          <span className="panel-heading-meta">
             {[budget != null ? `≤ ${formatGp(budget)}` : null, excludedIds.size ? `${excludedIds.size} avoided` : null]
               .filter(Boolean).join(' · ')}
           </span>

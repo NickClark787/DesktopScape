@@ -52,7 +52,7 @@ export function DefenceReductionPanel({ value, monster, onChange }: Props) {
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>Defence reduction</span>
-        {active && <button className="text-text-faint normal-case hover:text-accent" onClick={() => onChange(undefined)}>clear</button>}
+        {active && <button className="panel-heading-meta hover:text-parchment-ink" onClick={() => onChange(undefined)}>clear</button>}
       </div>
       <div className="p-3 flex flex-col gap-3">
         {/* Effective-defence readout */}

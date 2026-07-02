@@ -31,7 +31,7 @@ export function MonsterPicker({ monsters, selected, onSelect }: Props) {
           {selected && <MonsterIcon monster={selected} size="xs" />}
           <span>Encounter</span>
         </span>
-        {selected && <span className="text-text-faint normal-case truncate">Lvl {selected.level} · {selected.skills.hp} HP</span>}
+        {selected && <span className="panel-heading-meta truncate">Lvl {selected.level} · {selected.skills.hp} HP</span>}
       </div>
       <div className="p-3">
         <input

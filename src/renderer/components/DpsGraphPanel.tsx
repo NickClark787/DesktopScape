@@ -60,7 +60,7 @@ export function DpsGraphPanel({ loadout, target }: Props) {
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>DPS vs target defence</span>
-        <span className="text-text-faint normal-case tabular-nums">
+        <span className="panel-heading-meta tabular-nums">
           at def {currentDef}: {currentDps.toFixed(2)} dps
         </span>
       </div>
