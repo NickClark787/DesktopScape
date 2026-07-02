@@ -2,36 +2,88 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------------------
+   Self-hosted fonts (CSP is default-src 'self' — no external font hosts).
+   Variable TTFs bundled by Vite; OFL licenses sit alongside the files.
+   Cinzel     — carved-stone display face for headings / wordmark.
+   Pixelify   — retro pixel face for tiny chrome (badges, slot labels, XP
+                drops). Accents only, never body copy.
+--------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Cinzel';
+  src: url('../assets/fonts/Cinzel-Variable.ttf') format('truetype-variations');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pixelify Sans';
+  src: url('../assets/fonts/PixelifySans-Variable.ttf') format('truetype-variations');
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Theme values needed outside Tailwind classes (inline SVG, JS-driven
+   styles). Keep in sync with tailwind.config.js — that file is the source
+   of truth; these are its mirrors for non-utility consumers. */
+:root {
+  --c-bg: #1c1a17;
+  --c-stone: #3e3529;
+  --c-stone-raised: #4b4032;
+  --c-socket: #14100c;
+  --c-bronze: #6b5838;
+  --c-bronze-strong: #8c6f3f;
+  --c-gold-carved: #d4af37;
+  --c-gold: #f2c94c;
+  --c-gold-bright: #ffd700;
+  --c-parchment: #e8dcc0;
+  --c-parchment-deep: #c9b587;
+  --c-ink: #2b2419;
+  --c-text: #f4ead1;
+  --c-text-dim: #c9b894;
+  --c-osrs-yellow: #ffff00;
+  --c-xp-green: #3fbf5f;
+  --c-melee: #e2402a;
+  --c-ranged: #3fbf5f;
+  --c-magic: #4a90e2;
+}
+
 html, body, #root { height: 100%; }
 body {
-  background-color: #1a130d;
-  /* Layered atmosphere (painted bottom-to-top in source order):
-     1. a warm gold key-light glow spilling from the top edge,
-     2. a dim ember glow rising from the lower-right, and
-     3. the original parchment-grain noise so nothing reads as flat-black.
-     SVG fractalNoise is cheap, GPU-rasterized, and inlines without a request.
-     `fixed` keeps the glows anchored to the viewport while content scrolls,
-     so the light feels like it comes from the room, not the page. */
+  background-color: #1c1a17;
+  /* Layered atmosphere: a warm torchlight glow from above, a dim ember from
+     the lower-right, and the parchment-grain noise so the backdrop never
+     reads flat-black. All static paints — nothing here animates. */
   background-image:
-    radial-gradient(115% 80% at 50% -12%, rgba(255, 203, 71, 0.09), transparent 55%),
-    radial-gradient(90% 70% at 88% 112%, rgba(150, 96, 42, 0.12), transparent 60%),
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.04 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    radial-gradient(115% 80% at 50% -12%, rgba(212, 175, 55, 0.10), transparent 55%),
+    radial-gradient(90% 70% at 88% 112%, rgba(140, 111, 63, 0.13), transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.55  0 0 0 0 0.42  0 0 0 0 0.22  0 0 0 0.045 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
   background-attachment: fixed, fixed, fixed;
 }
 
-/* Gold text selection — on-brand and legible against the dark surfaces. */
-::selection { background: rgba(255, 203, 71, 0.28); color: #fff6df; }
+/* Gold text selection. */
+::selection { background: rgba(212, 175, 55, 0.32); color: #fff6df; }
 
-/* Keyboard focus ring in OSRS gold. Pointer clicks don't trigger it
-   (:focus-visible), so the chrome stays calm during normal mouse use. */
+/* Keyboard focus ring in bright gold — pointer clicks stay quiet. */
 :focus-visible {
-  outline: 2px solid rgba(255, 203, 71, 0.65);
+  outline: 2px solid rgba(255, 215, 0, 0.7);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 
-/* Respect reduced-motion: collapse every animation/transition to ~instant
-   while preserving final state. One switch covers the whole motion system. */
+/* Stone-well scrollbars with a bronze thumb. */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #1c1a17; }
+::-webkit-scrollbar-thumb {
+  background: #6b5838;
+  border-radius: 5px;
+  border: 1px solid #2b251c;
+}
+::-webkit-scrollbar-thumb:hover { background: #8c6f3f; }
+
+/* Reduced-motion: collapse every animation/transition to ~instant while
+   preserving final state. One switch covers the entire motion system. */
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.001ms !important;
@@ -41,121 +93,142 @@ body {
   }
 }
 
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #1a130d; }
-::-webkit-scrollbar-thumb {
-  background: #4a3a26;
-  border-radius: 5px;
-  border: 1px solid #2e2218; /* sliver of bg around the thumb so it sits in a track */
-}
-::-webkit-scrollbar-thumb:hover { background: #6b5538; }
-
 @layer components {
-  /* Panel — the basic bordered surface used by every sidebar and main
-     section. Slight gilt-highlight on the top inner edge gives the chrome
-     a hint of metallic light without being visually loud. */
+  /* Panel — carved stone slab. The bevel (light top/left, dark bottom/right)
+     comes from the pre-baked `panel` shadow token; the bronze border is the
+     frame line. */
   .panel {
     @apply bg-bg-soft border border-border rounded-md shadow-panel;
   }
 
-  /* Panel heading — the in-game gilt-uppercase tab label treatment.
-     Trebuchet MS (font-rs) was the actual face used by the RuneScape Java
-     client, so this lands period-correct without bundling a custom font.
-     A faint gold linear-gradient washes from the top to add the "lit from
-     above by gold trim" feel. */
+  /* Panel heading — a parchment scroll-strip riveted onto the stone, with
+     carved ink lettering (Cinzel). The gilt rule underlines it. */
   .panel-heading {
-    @apply px-4 py-2 text-xs uppercase tracking-[0.14em] font-bold font-rs text-accent
-           border-b border-border;
-    background: linear-gradient(to bottom, rgba(255, 203, 71, 0.05), transparent 70%);
+    @apply px-4 py-2 text-xs uppercase tracking-[0.14em] font-bold font-display
+           text-parchment-ink border-b border-border-gilt/50 rounded-t-[3px];
+    background: linear-gradient(180deg, #eee3ca 0%, #e8dcc0 55%, #cdb98b 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(43, 36, 25, 0.25);
+  }
+  /* Secondary text inside a heading strip (counts, sublabels) — ink-dim so
+     it stays AA-readable on parchment. Components opt in with this class
+     instead of the dark-surface text-text-* tokens. */
+  .panel-heading-meta {
+    @apply text-parchment-ink-dim normal-case tracking-normal font-sans font-medium;
   }
 
-  /* Equipment slot cell — recessed dark well with bronze stroke. The heavy
-     inset shadow plus near-black bg-bg-slot mimics the equipment-interface
-     wells in-game; on hover, the bronze stroke brightens to OSRS gold to
-     advertise the click-to-swap affordance. */
+  /* Equipment socket — a deep inset well cut into the stone. The gold hover
+     glow lives on a ::after pseudo-element whose OPACITY transitions (the
+     pre-baked shadow itself never animates — perf guardrail). */
   .slot-cell {
-    @apply relative aspect-square bg-bg-slot rounded border border-border shadow-slot
-           flex items-center justify-center overflow-hidden cursor-pointer
-           transition-[transform,border-color,box-shadow] duration-150 ease-out;
+    @apply relative aspect-square bg-bg-slot rounded border border-border/70 shadow-slot
+           flex items-center justify-center overflow-visible cursor-pointer
+           transition-transform duration-150 ease-out;
   }
-  /* Hover lifts the well a hair and rings it in gold — the click-to-swap
-     affordance reads as "this tile is interactive" without repainting. */
-  .slot-cell:hover { @apply border-accent/70 shadow-glow -translate-y-px; }
+  .slot-cell::after {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.65), 0 3px 14px rgba(212, 175, 55, 0.25);
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+    pointer-events: none;
+  }
+  .slot-cell:hover { @apply -translate-y-px; }
+  .slot-cell:hover::after, .slot-cell:focus-visible::after { opacity: 1; }
   .slot-cell:active { @apply translate-y-0; }
   .slot-cell-label {
     @apply absolute inset-x-0 bottom-0 text-[10px] text-text-faint text-center pointer-events-none select-none;
   }
 
-  /* Generic button — raised-metal feel via the btn shadow (1px highlight
-     up, 1px shadow down). Hover shifts the border + text to gold without
-     repainting the background, which keeps the chrome stable while
-     advertising interactivity. */
+  /* Generic button — raised stone block. Press = 1px sink. Only color,
+     border-color and transform transition; the bevel shadow snaps. */
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded font-semibold text-sm
-           px-3 py-1.5 transition border border-border bg-bg-raised text-text shadow-btn
-           hover:border-accent/70 hover:text-accent
+           px-3 py-1.5 border border-border bg-bg-raised text-text shadow-btn
+           transition-[color,border-color,transform] duration-150
+           hover:border-accent-carved hover:text-accent
            active:translate-y-px;
   }
   .btn:disabled { @apply opacity-50 cursor-not-allowed; }
 
-  /* Primary CTA — gold fill with dark text, like the action buttons on
-     the in-game world map / quest list. Uses font-bold for stronger weight
-     against the bright gold background. A light "sheen" band sweeps across
-     on hover (a single pass) to give the gold a struck-metal shine. */
+  /* Primary CTA — struck gold. Ink lettering on a carved→bright gradient,
+     with a one-pass sheen sweep on hover (transform-only). */
   .btn-primary {
-    @apply relative overflow-hidden bg-accent text-bg border-accent font-bold
-           hover:bg-accent-hover hover:border-accent-hover hover:text-bg;
+    @apply relative overflow-hidden text-parchment-ink border-accent-carved font-bold
+           hover:text-parchment-ink hover:border-accent-hover;
+    background: linear-gradient(180deg, #ffd700 0%, #d4af37 60%, #b8942c 100%);
+    text-shadow: 0 1px 0 rgba(255, 246, 223, 0.4);
   }
   .btn-primary::after {
     content: '';
     position: absolute;
     top: 0; bottom: 0; left: 0; width: 45%;
-    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.5), transparent);
     transform: translateX(-220%);
     pointer-events: none;
   }
   .btn-primary:hover:not(:disabled)::after { animation: btn-sheen 0.75s ease-out; }
   @keyframes btn-sheen { to { transform: translateX(420%); } }
 
-  /* Numeric input — tabular-nums so the digits don't dance when typed,
-     and right-aligned to anchor the number to the field edge. */
+  /* Numeric input — small inset socket. */
   .num-input {
-    @apply w-16 bg-bg-raised border border-border rounded px-2 py-1 text-right text-sm
-           outline-none tabular-nums focus:border-accent;
+    @apply w-16 bg-bg-slot border border-border rounded px-2 py-1 text-right text-sm
+           text-text outline-none tabular-nums shadow-bevel-inset focus:border-accent-carved;
   }
 
-  /* Pill tabs (StyleTabs, etc.) — the active tab gets the gold accent
-     and the raised-metal shadow so it visually pops out of the surrounding
-     bg-soft strip. Inactive tabs hover gold without the lift, keeping the
-     active state distinct. */
+  /* Pill tabs — the active tab is a raised, gold-lettered stone. */
   .pill-tab {
     @apply px-4 py-2 text-sm font-semibold rounded text-text-dim
-           transition-[color,background-color,box-shadow,transform] duration-200 ease-out
+           transition-[color,background-color,transform] duration-200 ease-out
            hover:text-accent;
   }
   .pill-tab[data-active=true] {
     @apply bg-bg-raised text-accent shadow-btn;
   }
 
-  /* Hero DPS readout — the payoff number. Brushed-gold gradient fill with a
-     soft halo so it reads as the brightest thing on the page; tabular-nums
-     keeps the count-up from reflowing as digits tick over. */
+  /* Hero DPS readout — struck-gold lettering with a soft halo. Static
+     text-shadow; only the count-up changes the digits. */
   .hero-dps {
-    @apply font-rs font-bold tabular-nums leading-none;
-    background: linear-gradient(180deg, #fff1c4 0%, #ffcb47 52%, #d9991f 100%);
+    @apply font-display font-bold tabular-nums leading-none;
+    background: linear-gradient(180deg, #fff3c2 0%, #ffd700 48%, #b8942c 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
-    text-shadow: 0 0 30px rgba(255, 203, 71, 0.28);
-    letter-spacing: -0.015em;
+    text-shadow: 0 0 28px rgba(255, 215, 0, 0.25);
+    letter-spacing: 0.01em;
+  }
+
+  /* OSRS item tooltip — dark card, gold frame, yellow item name. Content
+     is rendered by the Tooltip component; this is just its skin. */
+  .osrs-tooltip {
+    @apply pointer-events-none absolute z-50 w-max max-w-xs rounded border px-3 py-2 text-left;
+    background: rgba(24, 20, 15, 0.97);
+    border-color: #8c6f3f;
+    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 6px 20px rgba(0, 0, 0, 0.6);
+  }
+  .osrs-tooltip-name { @apply block text-[13px] leading-tight font-semibold text-osrs-yellow; }
+  .osrs-tooltip-line { @apply block text-[11px] leading-snug text-text-dim; }
+
+  /* XP-drop number — floats up and fades, Pixelify for the retro counter
+     feel. Positioned by the XpDrop component; transform+opacity only. */
+  .xp-drop {
+    @apply pointer-events-none absolute font-pixel text-sm font-bold animate-xp-drop;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 0 8px rgba(0, 0, 0, 0.5);
+    will-change: transform, opacity;
+  }
+
+  /* Gold shimmer band for the "new best setup" flourish. The parent adds
+     overflow-hidden + relative; this band sweeps once via transform. */
+  .shimmer-band {
+    @apply pointer-events-none absolute inset-y-0 w-1/3 animate-shimmer-sweep;
+    background: linear-gradient(100deg, transparent, rgba(255, 215, 0, 0.16), rgba(255, 246, 223, 0.28), rgba(255, 215, 0, 0.16), transparent);
+    will-change: transform;
   }
 }
 
-/* One-time staggered entrance for a container's direct children — applied to
-   the sidebar and the main column so the workspace "assembles" on load. The
-   `fade-rise` keyframes come from the Tailwind motion config. Capped at 8
-   steps; later children share the last delay. Suppressed under reduced-motion
-   by the global guard above. */
+/* One-time staggered entrance for a container's direct children — sidebar
+   and main column "assemble" on load. Suppressed by the reduced-motion guard. */
 .reveal-stagger > * { animation: fade-rise 0.5s cubic-bezier(0.22, 0.7, 0.2, 1) both; }
 .reveal-stagger > *:nth-child(1) { animation-delay: 0.04s; }
 .reveal-stagger > *:nth-child(2) { animation-delay: 0.10s; }
