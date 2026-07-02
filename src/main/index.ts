@@ -73,7 +73,9 @@ function createWindow() {
     height: 900,
     minWidth: 1100,
     minHeight: 720,
-    backgroundColor: '#0e1116',
+    // Matches the renderer theme's bg (tailwind `bg` / body background) so
+    // the pre-paint window doesn't flash the old blue-gray before React loads.
+    backgroundColor: '#1a130d',
     title: 'GearScape Desktop',
     autoHideMenuBar: true,
     webPreferences: {
