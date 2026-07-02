@@ -34,7 +34,7 @@ interface Props {
   className?: string;
 }
 
-function pieceLabel(p: EquipmentPiece): string {
+export function pieceLabel(p: EquipmentPiece): string {
   return p.version ? `${p.name} (${p.version})` : p.name;
 }
 
@@ -44,12 +44,12 @@ function s(n: number): string {
 }
 
 /**
- * Build a multi-line stats summary suitable for a native `title` tooltip.
- * Skips zero-valued lines so a typical chip isn't a wall of "+0"s. Newlines
- * render as line breaks in browser tooltips.
+ * Stat lines (without the name) for an item tooltip — shared between the
+ * native `title` fallback here and the styled OSRS tooltip card in GearGrid.
+ * Skips zero-valued lines so a typical chip isn't a wall of "+0"s.
  */
-function pieceTooltip(p: EquipmentPiece): string {
-  const lines: string[] = [pieceLabel(p)];
+export function pieceStatLines(p: EquipmentPiece): string[] {
+  const lines: string[] = [];
   const slotLabel = p.slot === '2h' ? 'weapon (2h)' : p.slot;
   lines.push(slotLabel);
 
@@ -87,7 +87,12 @@ function pieceTooltip(p: EquipmentPiece): string {
     lines.push(`Speed: ${p.speed} tick${p.speed === 1 ? '' : 's'}`);
   }
 
-  return lines.join('\n');
+  return lines;
+}
+
+/** Full multi-line summary for a native `title` tooltip. */
+function pieceTooltip(p: EquipmentPiece): string {
+  return [pieceLabel(p), ...pieceStatLines(p)].join('\n');
 }
 
 export function GearIcon({ piece, size = 'sm', title, className }: Props) {
