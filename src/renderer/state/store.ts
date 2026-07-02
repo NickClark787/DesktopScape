@@ -28,6 +28,8 @@ export interface LoadoutSnapshot {
     spell: string | null;
     stance?: WeaponStance;
     raidScaling?: RaidScaling;
+    /** Opener spec-hit config. Optional — absent in pre-existing saves. */
+    defenceReduction?: DefenceReduction;
     equipmentIds: Partial<Record<Exclude<EquipmentSlot, '2h'>, number>>;
   };
   stanceOverride: WeaponStance | null;
@@ -324,6 +326,7 @@ export const useApp = create<AppState>((set) => ({
         spell: st.loadout.spell,
         stance: st.loadout.stance,
         raidScaling: st.loadout.raidScaling,
+        defenceReduction: st.loadout.defenceReduction,
         equipmentIds,
       },
       stanceOverride: st.stanceOverride,
@@ -363,6 +366,7 @@ export const useApp = create<AppState>((set) => ({
         spell: snap.loadout.spell,
         stance: snap.loadout.stance,
         raidScaling: snap.loadout.raidScaling,
+        defenceReduction: snap.loadout.defenceReduction,
         equipment,
       },
     };

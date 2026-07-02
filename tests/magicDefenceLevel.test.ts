@@ -54,3 +54,30 @@ describe('per-NPC magic defence level (USES_DEFENCE_LEVEL_FOR_MAGIC_DEFENCE)', (
     expect(drained.accuracy).toBeGreaterThan(base.accuracy);
   });
 });
+
+describe('Brimstone ring magic accuracy', () => {
+  const brimstone = equipment.find((p) => p.name === 'Brimstone ring')!;
+  const vorkath = monsters.find((m) => m.id === 8059)!; // high magic defence
+
+  it('blends 25% of casts against 90% of the defence roll', () => {
+    const plain = calcDps(mageLoadout, vorkath);
+    const withRing = calcDps({ ...mageLoadout, equipment: { ...mageLoadout.equipment, ring: brimstone } }, vorkath);
+    // Reconstruct the expected blend from the WITH-RING run's rolls — the
+    // ring carries its own magic attack bonus, so its attack roll differs
+    // from the bare-hands run. The blend applies on top of that roll.
+    const { attackRoll, defenceRoll } = withRing.details;
+    const p = (atk: number, def: number) => (atk > def ? 1 - (def + 2) / (2 * (atk + 1)) : atk / (2 * (def + 1)));
+    const expected = 0.75 * p(attackRoll, defenceRoll) + 0.25 * p(attackRoll, Math.trunc((defenceRoll * 9) / 10));
+    expect(withRing.accuracy).toBeCloseTo(expected, 9);
+    expect(withRing.accuracy).toBeGreaterThan(plain.accuracy);
+    expect(withRing.effects.some((e) => e.name === 'Brimstone ring')).toBe(true);
+  });
+
+  it('does not fire outside magic', () => {
+    const melee = calcDps({
+      ...mageLoadout, style: 'melee', attackStyle: 'slash',
+      equipment: { ring: brimstone }, spell: null,
+    }, vorkath);
+    expect(melee.effects.some((e) => e.name === 'Brimstone ring')).toBe(false);
+  });
+});

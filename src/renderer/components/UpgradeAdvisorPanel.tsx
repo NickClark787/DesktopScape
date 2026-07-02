@@ -60,9 +60,18 @@ export function UpgradeAdvisorPanel({
   const [computing, setComputing] = useState(false);
   const [priceError, setPriceError] = useState('');
 
-  // The cached optimum is specific to this target + style. Invalidate it when
-  // either changes so we don't diff against a stale optimum.
-  useEffect(() => { setBest(null); }, [target?.id, target?.version, style]);
+  // The cached optimum is specific to the target + style AND everything that
+  // feeds the DPS calc except gear: skills, prayers, potions, slayer/wildy
+  // flags, raid scaling and defence reduction. Invalidate on any of those so
+  // we never diff the live loadout against an optimum computed under old
+  // buffs. Gear/stance/spell edits intentionally KEEP the cache — that's the
+  // "list shrinks live as you apply suggestions" behavior.
+  useEffect(() => { setBest(null); }, [
+    target?.id, target?.version, style,
+    loadout.skills, loadout.prayers, loadout.potions,
+    loadout.onSlayerTask, loadout.inWilderness,
+    loadout.raidScaling, loadout.defenceReduction,
+  ]);
 
   // Cheap marginal diff — recomputes as the loadout changes (e.g. after the
   // player applies a suggestion), so the list shrinks live without re-optimizing.
@@ -119,8 +128,11 @@ export function UpgradeAdvisorPanel({
         {/* Scope + run */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="inline-flex rounded-lg border border-border bg-bg-soft p-1 text-sm">
-            <button className="pill-tab" data-active={scope === 'owned'} onClick={() => run('owned')} disabled={!target}
-              title="Best upgrades you can equip from your owned items">From my bank</button>
+            <button className="pill-tab" data-active={scope === 'owned'} onClick={() => run('owned')}
+              disabled={!target || ownedIds.size === 0}
+              title={ownedIds.size === 0
+                ? 'Add owned items first (Owned-only filter panel) — an empty bank has nothing to suggest'
+                : 'Best upgrades you can equip from your owned items'}>From my bank</button>
             <button className="pill-tab" data-active={scope === 'all'} onClick={() => run('all')} disabled={!target}
               title="Best upgrades from every item — buy targets included">All items</button>
           </div>

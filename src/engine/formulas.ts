@@ -688,13 +688,27 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   }
 
   // Attack vs defence accuracy
-  let accuracy: number;
-  if (attackRoll > defenceRoll) {
-    accuracy = 1 - (defenceRoll + 2) / (2 * (attackRoll + 1));
-  } else {
-    accuracy = attackRoll / (2 * (defenceRoll + 1));
+  const hitChance = (atk: number, def: number): number => {
+    const p = atk > def
+      ? 1 - (def + 2) / (2 * (atk + 1))
+      : atk / (2 * (def + 1));
+    return Math.max(0, Math.min(1, p));
+  };
+  let accuracy = hitChance(attackRoll, defenceRoll);
+
+  // Brimstone ring: magic attacks have a 25% chance to roll against 90% of
+  // the target's defence roll (wiki calc getDisplayHitChance) — a small
+  // unconditional magic accuracy boost.
+  if (style === 'magic' && loadout.equipment.ring?.name === 'Brimstone ring') {
+    const before = accuracy;
+    accuracy = 0.75 * accuracy + 0.25 * hitChance(attackRoll, Math.trunc((defenceRoll * 9) / 10));
+    if (accuracy !== before) {
+      effects.push({
+        name: 'Brimstone ring',
+        detail: `25% of casts vs 90% def: ${(before * 100).toFixed(1)}% → ${(accuracy * 100).toFixed(1)}% acc`,
+      });
+    }
   }
-  accuracy = Math.max(0, Math.min(1, accuracy));
 
   // Osmumten's fang: on a missed accuracy roll, reroll once. Net accuracy is
   // `1 - (1 - p)^2`. (The 15-85% damage range doesn't affect the average, so

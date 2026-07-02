@@ -248,7 +248,6 @@ export default function App() {
     const effectiveAttack = hint?.attackStyle ?? candidate?.attackStyle ?? state.loadout.attackStyle;
     if (hint?.stance !== undefined) state.setStance(hint.stance);
     if (hint?.attackStyle !== undefined) state.setAttackStyle(hint.attackStyle);
-    if (!selectedMonster) return;
     // Build the next equipment locally — store updates haven't flushed yet.
     const nextEquipment = { ...state.loadout.equipment };
     if (piece === null) {
@@ -258,25 +257,37 @@ export default function App() {
       if (slot === 'weapon' && piece.isTwoHanded) nextEquipment.shield = null;
       else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
     }
-    const nextLoadout = {
-      ...state.loadout,
-      style: state.style,
-      attackStyle: effectiveAttack,
-      stance: effectiveStance,
-      equipment: nextEquipment,
+    refreshCandidate(nextEquipment, effectiveStance, effectiveAttack, state.loadout.spell);
+  }
+
+  /**
+   * Shared tail of every manual gear edit (slot pick, advisor upgrade):
+   * recompute the current style's metrics for the new equipment under the
+   * given stance/attack/spell and refresh only that style's candidate cache —
+   * the other styles' cached candidates are unaffected by this edit.
+   */
+  function refreshCandidate(
+    nextEquipment: PlayerLoadout['equipment'],
+    stance: WeaponStance | undefined,
+    attackStyle: AttackType,
+    spell: string | null,
+  ) {
+    if (!selectedMonster) return;
+    const nextLoadout: PlayerLoadout = {
+      ...state.loadout, style: state.style, equipment: nextEquipment, stance, attackStyle, spell,
     };
     const result = calcDps(nextLoadout, selectedMonster);
-    // Update only the current style's cache — the other styles' cached
-    // candidates are still valid (this swap doesn't affect them).
-    const newCandidate: BestSetupCandidate = {
-      equipment: nextEquipment,
-      result,
-      style: state.style,
-      attackStyle: nextLoadout.attackStyle,
-      spell: state.style === 'magic' ? state.loadout.spell : undefined,
-      stance: nextLoadout.stance,
-    };
-    setCandidates((c) => ({ ...c, [state.style]: newCandidate }));
+    setCandidates((c) => ({
+      ...c,
+      [state.style]: {
+        equipment: nextEquipment,
+        result,
+        style: state.style,
+        attackStyle,
+        spell: state.style === 'magic' ? spell : undefined,
+        stance,
+      },
+    }));
   }
 
   /**
@@ -309,27 +320,12 @@ export default function App() {
     if (sug.stance) state.setStance(sug.stance);
     if (sug.attackStyle) state.setAttackStyle(sug.attackStyle);
     if (state.style === 'magic' && sug.spell !== undefined) state.setSpell(sug.spell);
-    if (!selectedMonster) return;
-    const nextLoadout: PlayerLoadout = {
-      ...state.loadout,
-      style: state.style,
-      equipment: nextEquipment,
-      stance: sug.stance ?? state.loadout.stance,
-      attackStyle: sug.attackStyle ?? state.loadout.attackStyle,
-      spell: state.style === 'magic' && sug.spell !== undefined ? sug.spell : state.loadout.spell,
-    };
-    const result = calcDps(nextLoadout, selectedMonster);
-    setCandidates((c) => ({
-      ...c,
-      [state.style]: {
-        equipment: nextEquipment,
-        result,
-        style: state.style,
-        attackStyle: nextLoadout.attackStyle,
-        spell: state.style === 'magic' ? nextLoadout.spell : undefined,
-        stance: nextLoadout.stance,
-      },
-    }));
+    refreshCandidate(
+      nextEquipment,
+      sug.stance ?? state.loadout.stance,
+      sug.attackStyle ?? state.loadout.attackStyle,
+      state.style === 'magic' && sug.spell !== undefined ? sug.spell : state.loadout.spell,
+    );
   }
 
   async function refreshData() {
