@@ -203,7 +203,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
               {current && (
                 <button
                   onClick={() => { onPick(null); onClose(); }}
-                  className="hover:text-style-melee"
+                  className="hover:text-osrs-red"
                 >
                   Unequip current
                 </button>
@@ -291,7 +291,7 @@ function DeltaPill({ delta }: { delta: number }) {
     <span
       className={[
         'text-[11px] font-medium',
-        positive ? 'text-osrs-green' : 'text-style-melee',
+        positive ? 'text-osrs-green' : 'text-osrs-red',
       ].join(' ')}
     >
       {positive ? '+' : ''}{delta.toFixed(2)}

@@ -184,7 +184,7 @@ export function UpgradeAdvisorPanel({
                 Load live GE prices to rank by value (DPS per GP)
               </button>
             )}
-            {priceError && <span className="text-style-melee">{priceError}</span>}
+            {priceError && <span className="text-osrs-red">{priceError}</span>}
           </div>
         )}
 

@@ -87,7 +87,7 @@ export function DpsGraphPanel({ loadout, target }: Props) {
           <text x={PAD.left - 6} y={H - PAD.bottom + 4} textAnchor="end" fontSize="10" fill="var(--c-text-dim)">0</text>
           <text x={PAD.left} y={H - PAD.bottom + 16} textAnchor="middle" fontSize="10" fill="var(--c-text-dim)">0</text>
           <text x={W - PAD.right} y={H - PAD.bottom + 16} textAnchor="end" fontSize="10" fill="var(--c-text-dim)" className="tabular-nums">def {baseDef}</text>
-          <text x={Math.min(x(currentDef) + 6, W - 70)} y={PAD.top + 10} fontSize="10" fill="var(--c-melee)">after opener</text>
+          <text x={Math.min(x(currentDef) + 6, W - 70)} y={PAD.top + 10} fontSize="10" fill="var(--c-red-bright)">after opener</text>
         </svg>
         {flatLine && (
           <p className="text-[11px] text-text-faint mt-1 leading-snug">

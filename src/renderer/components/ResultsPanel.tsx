@@ -69,7 +69,7 @@ function XpDrops({ drops, remove }: { drops: Drop[]; remove: (id: number) => voi
         <span
           key={d.id}
           onAnimationEnd={() => remove(d.id)}
-          className={['xp-drop right-1 top-1', d.up ? 'text-osrs-yellow' : 'text-style-melee'].join(' ')}
+          className={['xp-drop right-1 top-1', d.up ? 'text-osrs-yellow' : 'text-osrs-red'].join(' ')}
           aria-hidden
         >
           {d.text}
@@ -271,10 +271,7 @@ function HeroDps({ dps, style, attackStyle, shimmer, onShimmerEnd }: {
 function MaxHitScroll({ value }: { value: number }) {
   const { drops, remove } = useXpDrops(value, (d) => `${d > 0 ? '+' : ''}${Math.round(d)}`);
   return (
-    <div
-      className="relative rounded-md border border-border-strong px-3 py-2 shadow-bevel"
-      style={{ background: 'linear-gradient(180deg, #eee3ca 0%, #e8dcc0 55%, #cdb98b 100%)' }}
-    >
+    <div className="parchment-card relative px-3 py-2">
       <XpDrops drops={drops} remove={remove} />
       <div className="text-[11px] uppercase tracking-wider text-parchment-ink-dim font-semibold">Max hit</div>
       <div className="font-display font-bold text-2xl mt-0.5 text-parchment-ink tabular-nums">{value}</div>

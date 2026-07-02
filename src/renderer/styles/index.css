@@ -45,6 +45,7 @@
   --c-osrs-yellow: #ffff00;
   --c-xp-green: #3fbf5f;
   --c-cyan: #6fd6d6;
+  --c-red-bright: #ff7a66;
   --c-melee: #e2402a;
   --c-ranged: #3fbf5f;
   --c-magic: #4a90e2;
@@ -198,6 +199,13 @@ body {
     color: transparent;
     text-shadow: 0 0 28px rgba(255, 215, 0, 0.25);
     letter-spacing: 0.01em;
+  }
+
+  /* Parchment scroll card — the light "quest journal" surface used for
+     emphasis readouts (max hit, heading strips share the same gradient). */
+  .parchment-card {
+    @apply rounded-md border border-border-strong shadow-bevel;
+    background: linear-gradient(180deg, #eee3ca 0%, #e8dcc0 55%, #cdb98b 100%);
   }
 
   /* OSRS item tooltip — dark card, gold frame, yellow item name. Content

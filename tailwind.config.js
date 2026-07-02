@@ -41,11 +41,12 @@ export default {
           slot: '#14100c',
         },
         // Parchment "scroll" surfaces + ink text for on-parchment content.
+        // ink-dim holds ≥4.5:1 even on the deep-parchment gradient bottom.
         parchment: {
           DEFAULT: '#e8dcc0',
           deep: '#c9b587',
           ink: '#2b2419',
-          'ink-dim': '#5c4e38',
+          'ink-dim': '#524531',
         },
         // Bronze frame lines; `gilt` is the carved-gold rule.
         border: {
@@ -53,11 +54,12 @@ export default {
           strong: '#8c6f3f',
           gilt: '#d4af37',
         },
-        // Parchment-tinted text on dark stone.
+        // Parchment-tinted text on dark stone. All three steps hold WCAG AA
+        // (≥4.5:1) against the stone panel surface.
         text: {
           DEFAULT: '#f4ead1',
           dim: '#c9b894',
-          faint: '#8f7f5f',
+          faint: '#ab9e7a',
         },
         // Interactive gold. `carved` for frames/rests, DEFAULT for text and
         // affordances, `hover`/`bright` for the lit state and the CTA.
@@ -67,12 +69,15 @@ export default {
           hover: '#ffd700',
         },
         // Vibrant semantic highlights — the OSRS chat/interface colors.
+        // `red` is the TEXT-safe fire-red (AA on stone); use style.melee for
+        // non-text graphics (rails, dots, borders) only.
         osrs: {
           yellow: '#ffff00',
           green: '#3fbf5f',
           greenBright: '#00ff00',
           cyan: '#6fd6d6',
           purple: '#9b5de5',
+          red: '#ff7a66',
         },
         // Combat styles keep their in-game hues: fire-red melee, XP-green
         // ranged, rune-blue magic.

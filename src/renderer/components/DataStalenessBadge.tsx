@@ -47,7 +47,7 @@ export function DataStalenessBadge({ meta }: Props) {
   let dotCls = 'bg-text-faint/40';
   let title = `OSRS data ${label}${sourceTag === ' · bundled' ? ' (shipped with installer)' : ' (last refresh from CDN)'}`;
   if (days >= 60) {
-    cls = 'text-style-melee';
+    cls = 'text-osrs-red';
     dotCls = 'bg-style-melee';
     title = `OSRS data is ${label} — likely missing recent items/bosses. Click Refresh.`;
   } else if (days >= 14) {

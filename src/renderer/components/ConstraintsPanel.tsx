@@ -90,7 +90,7 @@ export function ConstraintsPanel({
               className="num-input w-24"
             />
           </label>
-          {budgetError && <span className="text-xs text-style-melee">{budgetError}</span>}
+          {budgetError && <span className="text-xs text-osrs-red">{budgetError}</span>}
           {budget != null && (
             <span className="text-[11px] text-text-faint leading-snug">
               Best setup will cost at most {formatGp(budget)}. Owned items are free; untradeables
@@ -119,7 +119,7 @@ export function ConstraintsPanel({
                   onClick={() => { onAddExcluded(p.id); setQuery(''); }}
                   className="w-full flex items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-bg-raised"
                 >
-                  <span className="text-style-melee">−</span>
+                  <span className="text-osrs-red">−</span>
                   <GearIcon piece={p} size="sm" />
                   <span className="flex-1 truncate">
                     {p.name}
