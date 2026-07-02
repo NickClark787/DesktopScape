@@ -148,7 +148,7 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
                       <>
                         <button
                           onClick={() => { onDelete(key); setConfirmDelete(null); }}
-                          className="btn text-xs text-red-400 border-red-400/40 hover:bg-red-400/10"
+                          className="btn text-xs text-style-melee border-style-melee/40 hover:bg-style-melee/10"
                           aria-label={`Confirm delete loadout ${key}`}
                         >
                           Confirm
@@ -164,7 +164,7 @@ export function LoadoutManagerPanel({ equipment, saved, activeName, onSave, onLo
                     ) : (
                       <button
                         onClick={() => setConfirmDelete(key)}
-                        className="btn text-xs hover:text-red-400"
+                        className="btn text-xs hover:text-style-melee"
                         title="Delete"
                         aria-label={`Delete loadout ${key}`}
                       >

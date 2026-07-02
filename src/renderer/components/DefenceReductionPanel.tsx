@@ -64,14 +64,14 @@ export function DefenceReductionPanel({ value, monster, onChange }: Props) {
               <>
                 <span className="text-text-faint">→</span>
                 <span className="text-accent font-semibold">{reducedDef}</span>
-                <span className="text-emerald-400">(−{pctOff}%)</span>
+                <span className="text-osrs-green">(−{pctOff}%)</span>
               </>
             )}
             {(() => {
               const floor = defenceFloor(monster);
               if (floor <= 0) return null;
               return floor >= (baseDef ?? 0) ? (
-                <span className="text-amber-400">immune to def drain</span>
+                <span className="text-accent">immune to def drain</span>
               ) : (
                 <span className="text-text-faint">floor {floor}</span>
               );

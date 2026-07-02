@@ -70,24 +70,24 @@ export function DpsGraphPanel({ loadout, target }: Props) {
           {/* grid */}
           {gridYs.map((gy, i) => (
             <line key={i} x1={PAD.left} x2={W - PAD.right} y1={gy} y2={gy}
-              stroke="#4a3a26" strokeWidth="1" strokeDasharray="3 5" opacity="0.5" />
+              stroke="var(--c-bronze)" strokeWidth="1" strokeDasharray="3 5" opacity="0.45" />
           ))}
           {/* axes */}
-          <line x1={PAD.left} x2={W - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom} stroke="#6b5538" strokeWidth="1" />
-          <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={H - PAD.bottom} stroke="#6b5538" strokeWidth="1" />
+          <line x1={PAD.left} x2={W - PAD.right} y1={H - PAD.bottom} y2={H - PAD.bottom} stroke="var(--c-bronze-strong)" strokeWidth="1" />
+          <line x1={PAD.left} x2={PAD.left} y1={PAD.top} y2={H - PAD.bottom} stroke="var(--c-bronze-strong)" strokeWidth="1" />
           {/* area + line */}
-          <path d={area} fill="rgba(255,203,71,0.07)" />
-          <path d={path} fill="none" stroke="#ffcb47" strokeWidth="2" strokeLinejoin="round" />
+          <path d={area} fill="rgba(212,175,55,0.08)" />
+          <path d={path} fill="none" stroke="var(--c-gold-bright)" strokeWidth="2" strokeLinejoin="round" />
           {/* current (post-opener) defence marker */}
           <line x1={x(currentDef)} x2={x(currentDef)} y1={PAD.top} y2={H - PAD.bottom}
-            stroke="#d83a3a" strokeWidth="1" strokeDasharray="4 4" opacity="0.8" />
-          <circle cx={x(currentDef)} cy={y(currentDps)} r="4" fill="#ffe080" stroke="#1a130d" strokeWidth="1.5" />
+            stroke="var(--c-melee)" strokeWidth="1" strokeDasharray="4 4" opacity="0.8" />
+          <circle cx={x(currentDef)} cy={y(currentDps)} r="4" fill="var(--c-gold-bright)" stroke="var(--c-bg)" strokeWidth="1.5" />
           {/* labels */}
-          <text x={PAD.left - 6} y={y(maxDps) + 4} textAnchor="end" fontSize="10" fill="#b8a484" className="tabular-nums">{maxDps.toFixed(1)}</text>
-          <text x={PAD.left - 6} y={H - PAD.bottom + 4} textAnchor="end" fontSize="10" fill="#b8a484">0</text>
-          <text x={PAD.left} y={H - PAD.bottom + 16} textAnchor="middle" fontSize="10" fill="#b8a484">0</text>
-          <text x={W - PAD.right} y={H - PAD.bottom + 16} textAnchor="end" fontSize="10" fill="#b8a484" className="tabular-nums">def {baseDef}</text>
-          <text x={Math.min(x(currentDef) + 6, W - 70)} y={PAD.top + 10} fontSize="10" fill="#d83a3a">after opener</text>
+          <text x={PAD.left - 6} y={y(maxDps) + 4} textAnchor="end" fontSize="10" fill="var(--c-text-dim)" className="tabular-nums">{maxDps.toFixed(1)}</text>
+          <text x={PAD.left - 6} y={H - PAD.bottom + 4} textAnchor="end" fontSize="10" fill="var(--c-text-dim)">0</text>
+          <text x={PAD.left} y={H - PAD.bottom + 16} textAnchor="middle" fontSize="10" fill="var(--c-text-dim)">0</text>
+          <text x={W - PAD.right} y={H - PAD.bottom + 16} textAnchor="end" fontSize="10" fill="var(--c-text-dim)" className="tabular-nums">def {baseDef}</text>
+          <text x={Math.min(x(currentDef) + 6, W - 70)} y={PAD.top + 10} fontSize="10" fill="var(--c-melee)">after opener</text>
         </svg>
         {flatLine && (
           <p className="text-[11px] text-text-faint mt-1 leading-snug">

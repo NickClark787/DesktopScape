@@ -47,12 +47,12 @@ export function DataStalenessBadge({ meta }: Props) {
   let dotCls = 'bg-text-faint/40';
   let title = `OSRS data ${label}${sourceTag === ' · bundled' ? ' (shipped with installer)' : ' (last refresh from CDN)'}`;
   if (days >= 60) {
-    cls = 'text-red-400';
-    dotCls = 'bg-red-400';
+    cls = 'text-style-melee';
+    dotCls = 'bg-style-melee';
     title = `OSRS data is ${label} — likely missing recent items/bosses. Click Refresh.`;
   } else if (days >= 14) {
-    cls = 'text-yellow-400';
-    dotCls = 'bg-yellow-400';
+    cls = 'text-accent';
+    dotCls = 'bg-accent';
     title = `OSRS data is ${label}${sourceTag === ' · bundled' ? ' (shipped with installer)' : ''} — consider refreshing.`;
   }
 

@@ -161,7 +161,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-backdrop-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 animate-backdrop-in"
       onClick={onClose}
     >
       <div
@@ -203,7 +203,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
               {current && (
                 <button
                   onClick={() => { onPick(null); onClose(); }}
-                  className="hover:text-red-400"
+                  className="hover:text-style-melee"
                 >
                   Unequip current
                 </button>
@@ -251,7 +251,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
                         <span className="block text-[11px] text-text-faint">
                           {summarizeStats(p)}
                           {(stanceChanged || attackChanged) && (
-                            <span className="text-amber-400"> · auto: {[
+                            <span className="text-accent"> · auto: {[
                               attackChanged && entry!.attackStyle,
                               stanceChanged && entry!.stance,
                             ].filter(Boolean).join(' / ')}</span>
@@ -291,7 +291,7 @@ function DeltaPill({ delta }: { delta: number }) {
     <span
       className={[
         'text-[11px] font-medium',
-        positive ? 'text-emerald-400' : 'text-red-400',
+        positive ? 'text-osrs-green' : 'text-style-melee',
       ].join(' ')}
     >
       {positive ? '+' : ''}{delta.toFixed(2)}

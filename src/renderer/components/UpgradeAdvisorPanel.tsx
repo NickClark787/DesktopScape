@@ -149,7 +149,7 @@ export function UpgradeAdvisorPanel({
               <span className="text-text-faint">→</span>
               <span>Best <span className="text-accent font-semibold">{fmt(report.bestDps, 2)}</span> dps</span>
               {report.bestDps - report.baseline > 0.005 && (
-                <span className="text-emerald-400">(+{fmt(report.bestDps - report.baseline, 2)})</span>
+                <span className="text-osrs-green">(+{fmt(report.bestDps - report.baseline, 2)})</span>
               )}
             </div>
             {!report.atOptimum && (
@@ -184,7 +184,7 @@ export function UpgradeAdvisorPanel({
                 Load live GE prices to rank by value (DPS per GP)
               </button>
             )}
-            {priceError && <span className="text-red-400">{priceError}</span>}
+            {priceError && <span className="text-style-melee">{priceError}</span>}
           </div>
         )}
 
@@ -209,8 +209,8 @@ export function UpgradeAdvisorPanel({
                 onClick={() => onApply(s)}
                 title={`Equip ${s.to.name}${s.to.version ? ` (${s.to.version})` : ''}`}
                 className="group flex items-center gap-3 rounded-md border border-border bg-bg-raised px-3 py-2 text-left
-                           transition-[transform,border-color,box-shadow] duration-150 ease-out
-                           hover:border-accent/70 hover:shadow-glow hover:-translate-y-px animate-fade-rise"
+                           transition-[transform,border-color] duration-150 ease-out
+                           hover:border-accent-carved hover:shadow-glow hover:-translate-y-px animate-fade-rise"
                 style={{ animationDelay: `${Math.min(i, 8) * 45}ms` }}
               >
                 <GearIcon piece={s.to} size="md" />
@@ -227,9 +227,9 @@ export function UpgradeAdvisorPanel({
                   </span>
                 </span>
                 <span className="flex flex-col items-end shrink-0 tabular-nums">
-                  <span className="text-emerald-400 text-sm font-semibold">
+                  <span className="text-osrs-green text-sm font-semibold">
                     +{fmt(s.delta, 2)}
-                    {s.pct !== null && <span className="text-emerald-400/70 text-[11px] font-normal"> ({fmt(s.pct * 100, 0)}%)</span>}
+                    {s.pct !== null && <span className="text-osrs-green/70 text-[11px] font-normal"> ({fmt(s.pct * 100, 0)}%)</span>}
                   </span>
                   {s.owned ? (
                     <span className="text-[10px] uppercase tracking-wider font-bold text-style-ranged">Owned</span>
