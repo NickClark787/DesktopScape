@@ -762,8 +762,6 @@ export function crystalArmourBonus(
 // -------------------------------------------------------------------------
 
 const KERIS_RE = /^Keris/i;
-const KERIS_DMG_PARTISAN_RE = /^(Keris partisan|Keris partisan of corruption|Keris partisan of the sun)$/i;
-const KERIS_ACC_PARTISAN_RE = /^(Keris partisan of corruption)$/i;
 
 function isKalphiteOrScarab(monster: Monster): boolean {
   const attrs = (monster.attributes || []).map((a) => a.toLowerCase());
@@ -771,11 +769,14 @@ function isKalphiteOrScarab(monster: Monster): boolean {
 }
 
 /**
- * Keris family bonus vs kalphite/scarab attribute monsters.
- *   - All Keris variants: 1/51 chance to deal triple damage. Expected avg
- *     damage multiplier on a hit = (50/51) + (1/51)*3 = 52/51 ≈ 1.0196.
- *   - Keris partisan / of corruption / of the sun: +33% passive damage.
- *   - Keris partisan of corruption: also +33% accuracy.
+ * Keris family bonus vs kalphite/scarab attribute monsters. Matches the wiki
+ * calc (PlayerVsNPCCalc:274-276 acc, 419-425 dmg, 1713-1719 proc):
+ *   - ALL Keris variants: ×133/100 max hit — except Keris partisan of
+ *     amascut, which gets ×115/100.
+ *   - Keris partisan of breaching: also ×133/100 accuracy
+ *     (https://twitter.com/JagexAsh/status/1704107285381787952).
+ *   - All variants: 1/51 chance to deal triple damage. Expected avg damage
+ *     multiplier on a hit = (50/51) + (1/51)*3 = 52/51 ≈ 1.0196.
  * Returns acc/damage multipliers (max hit & attack roll) plus an avg-damage
  * multiplier applied per-swing (for the triple-damage expected value).
  */
@@ -786,8 +787,8 @@ export function kerisBonus(
   if (!weapon || !KERIS_RE.test(weapon.name) || !isKalphiteOrScarab(monster)) {
     return { dmgMult: 1, accMult: 1, avgDmgMult: 1 };
   }
-  const dmgMult = KERIS_DMG_PARTISAN_RE.test(weapon.name) ? 1.33 : 1;
-  const accMult = KERIS_ACC_PARTISAN_RE.test(weapon.name) ? 1.33 : 1;
+  const dmgMult = weapon.name === 'Keris partisan of amascut' ? 1.15 : 1.33;
+  const accMult = weapon.name === 'Keris partisan of breaching' ? 1.33 : 1;
   const avgDmgMult = 52 / 51;
   return { dmgMult, accMult, avgDmgMult };
 }

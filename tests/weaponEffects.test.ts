@@ -447,6 +447,8 @@ describe('Keris family bonus', () => {
   const baseKeris = piece({ name: 'Keris', slot: 'weapon' });
   const partisan = piece({ name: 'Keris partisan', slot: 'weapon' });
   const corruption = piece({ name: 'Keris partisan of corruption', slot: 'weapon' });
+  const breaching = piece({ name: 'Keris partisan of breaching', slot: 'weapon' });
+  const amascut = piece({ name: 'Keris partisan of amascut', slot: 'weapon' });
   const sun = piece({ name: 'Keris partisan of the sun', slot: 'weapon' });
   const kalphite = monster({ attributes: ['kalphite'] });
   const scarab = monster({ attributes: ['scarab'] });
@@ -458,20 +460,22 @@ describe('Keris family bonus', () => {
     expect(kerisBonus(sun, kalphite).avgDmgMult).toBeCloseTo(52 / 51, 6);
   });
 
-  it('base Keris gets no dmg/acc multiplier', () => {
-    const r = kerisBonus(baseKeris, kalphite);
-    expect(r.dmgMult).toBe(1);
-    expect(r.accMult).toBe(1);
-  });
-
-  it('partisan variants add +33% dmg', () => {
+  it('every Keris variant gets ×133/100 dmg vs kalphite (wiki calc isWearingKeris)', () => {
+    expect(kerisBonus(baseKeris, kalphite).dmgMult).toBeCloseTo(1.33, 6);
     expect(kerisBonus(partisan, kalphite).dmgMult).toBeCloseTo(1.33, 6);
     expect(kerisBonus(corruption, kalphite).dmgMult).toBeCloseTo(1.33, 6);
+    expect(kerisBonus(breaching, kalphite).dmgMult).toBeCloseTo(1.33, 6);
     expect(kerisBonus(sun, kalphite).dmgMult).toBeCloseTo(1.33, 6);
   });
 
-  it('only Keris partisan of corruption adds +33% acc', () => {
-    expect(kerisBonus(corruption, kalphite).accMult).toBeCloseTo(1.33, 6);
+  it('Keris partisan of amascut gets the reduced ×115/100 dmg', () => {
+    expect(kerisBonus(amascut, kalphite).dmgMult).toBeCloseTo(1.15, 6);
+  });
+
+  it('only Keris partisan of breaching adds +33% acc', () => {
+    // https://twitter.com/JagexAsh/status/1704107285381787952
+    expect(kerisBonus(breaching, kalphite).accMult).toBeCloseTo(1.33, 6);
+    expect(kerisBonus(corruption, kalphite).accMult).toBe(1);
     expect(kerisBonus(partisan, kalphite).accMult).toBe(1);
     expect(kerisBonus(sun, kalphite).accMult).toBe(1);
   });

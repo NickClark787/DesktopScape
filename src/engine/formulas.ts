@@ -401,8 +401,8 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     attackRoll = Math.trunc(attackRoll * vm.accMult);
     pushIfFired(effects, 'Void (melee)', vm);
 
-    // Keris / Keris partisan vs kalphite/scarab — +33% dmg (partisans) & acc
-    // (corruption). 1/51 triple-damage proc applied to avg later.
+    // Keris family vs kalphite/scarab — +33% dmg (all variants; amascut +15%)
+    // & +33% acc (breaching). 1/51 triple-damage proc applied to avg later.
     const kb = kerisBonus(weapon, monster);
     maxHit = Math.trunc(maxHit * kb.dmgMult);
     attackRoll = Math.trunc(attackRoll * kb.accMult);
