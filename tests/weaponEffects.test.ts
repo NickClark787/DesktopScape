@@ -756,8 +756,24 @@ describe('demonbane melee weapons', () => {
     expect(r).toEqual({ dmgMult: 1.7, accMult: 1.7 });
   });
 
-  it('Darklight: +60% / +60% vs demon', () => {
-    expect(demonbaneMult(piece({ name: 'Darklight', slot: 'weapon' }), demon)).toEqual({ dmgMult: 1.6, accMult: 1.6 });
+  it('Darklight / Silverlight: +60% dmg, NO accuracy bonus', () => {
+    // Wiki calc only gives Arclight/Emberlight the accuracy factor
+    // (PlayerVsNPCCalc L261-263); Silverlight/Darklight are max-hit-only (L435-437).
+    expect(demonbaneMult(piece({ name: 'Darklight', slot: 'weapon' }), demon)).toEqual({ dmgMult: 1.6, accMult: 1 });
+    expect(demonbaneMult(piece({ name: 'Silverlight', slot: 'weapon' }), demon)).toEqual({ dmgMult: 1.6, accMult: 1 });
+  });
+
+  it('scales with demonbane vulnerability (Duke Sucellus 70%, Yama 120%)', () => {
+    const duke = monster({ name: 'Duke Sucellus', attributes: ['demon'] });
+    const yama = monster({ name: 'Yama', id: 14176, attributes: ['demon'] });
+    // Arclight vs Duke: trunc(70×70/100) = 49 → ×1.49
+    const vsDuke = demonbaneMult(piece({ name: 'Arclight', slot: 'weapon' }), duke);
+    expect(vsDuke.dmgMult).toBeCloseTo(1.49, 9);
+    expect(vsDuke.accMult).toBeCloseTo(1.49, 9);
+    // Arclight vs Yama: trunc(70×120/100) = 84 → ×1.84
+    const vsYama = demonbaneMult(piece({ name: 'Arclight', slot: 'weapon' }), yama);
+    expect(vsYama.dmgMult).toBeCloseTo(1.84, 9);
+    expect(vsYama.accMult).toBeCloseTo(1.84, 9);
   });
 
   it('identity vs non-demon', () => {
@@ -778,8 +794,11 @@ describe('dragon hunter weapons', () => {
     expect(dragonHunterMult(piece({ name: 'Dragon hunter crossbow', slot: 'weapon' }), dragon)).toEqual({ dmgMult: 1.25, accMult: 1.30 });
   });
 
-  it('DHW: +50% acc / +20% dmg vs dragon', () => {
-    expect(dragonHunterMult(piece({ name: 'Dragon hunter wand', slot: 'weapon' }), dragon)).toEqual({ dmgMult: 1.20, accMult: 1.50 });
+  it('DHW: ×7/4 acc / ×7/5 dmg vs dragon', () => {
+    // Wiki calc PlayerVsNPCCalc L270-271 (acc 7/4) and L1087-1088 (dmg 7/5).
+    const r = dragonHunterMult(piece({ name: 'Dragon hunter wand', slot: 'weapon' }), dragon);
+    expect(r.dmgMult).toBeCloseTo(7 / 5, 9);
+    expect(r.accMult).toBeCloseTo(7 / 4, 9);
   });
 
   it('identity vs non-dragon', () => {
@@ -791,6 +810,11 @@ describe('scorching bow', () => {
   const bow = piece({ name: 'Scorching bow', slot: 'weapon' });
   it('+30% / +30% vs demon', () => {
     expect(scorchingBowMult(bow, monster({ attributes: ['demon'] }))).toEqual({ dmgMult: 1.30, accMult: 1.30 });
+  });
+  it('scales with demonbane vulnerability', () => {
+    const duke = monster({ name: 'Duke Sucellus', attributes: ['demon'] });
+    // trunc(30×70/100) = 21 → ×1.21
+    expect(scorchingBowMult(bow, duke)).toEqual({ dmgMult: 1.21, accMult: 1.21 });
   });
   it('identity vs non-demon', () => {
     expect(scorchingBowMult(bow, monster())).toEqual({ dmgMult: 1, accMult: 1 });

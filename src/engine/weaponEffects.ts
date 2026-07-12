@@ -494,9 +494,10 @@ function isDragon(monster: Monster): boolean {
 
 /**
  * Dragon hunter weapons vs dragon-attribute monsters.
- *   - Dragon hunter lance: +20% dmg & acc (melee).
- *   - Dragon hunter crossbow: +30% dmg, +30% acc (ranged).
- *   - Dragon hunter wand: +50% acc, +20% dmg (magic).
+ *   - Dragon hunter lance: ×6/5 dmg & acc (melee).
+ *   - Dragon hunter crossbow: ×5/4 dmg, ×13/10 acc (ranged).
+ *   - Dragon hunter wand: ×7/5 dmg, ×7/4 acc (magic) —
+ *     PlayerVsNPCCalc L270-271 (acc) / L1087-1088 (dmg).
  * Returns identity when weapon or target doesn't qualify.
  */
 export function dragonHunterMult(
@@ -508,12 +509,13 @@ export function dragonHunterMult(
   // DHCB: +30% accuracy (×13/10) but only +25% damage (×5/4) — the wiki calc
   // applies ×5/4 to max hit (PlayerVsNPCCalc L788-790), not a symmetric +30%.
   if (weapon.name === 'Dragon hunter crossbow') return { dmgMult: 1.25, accMult: 1.30 };
-  if (weapon.name === 'Dragon hunter wand') return { dmgMult: 1.20, accMult: 1.50 };
+  if (weapon.name === 'Dragon hunter wand') return { dmgMult: 7 / 5, accMult: 7 / 4 };
   return { dmgMult: 1, accMult: 1 };
 }
 
 /**
- * Scorching bow — ranged demonbane equivalent. +30% dmg & acc vs demons.
+ * Scorching bow — ranged demonbane equivalent. +30% dmg & acc vs demons,
+ * scaled by demonbane vulnerability like the melee demonbane weapons.
  */
 export function scorchingBowMult(
   weapon: EquipmentPiece | null,
@@ -521,7 +523,8 @@ export function scorchingBowMult(
 ): { dmgMult: number; accMult: number } {
   if (!weapon || weapon.name !== 'Scorching bow') return { dmgMult: 1, accMult: 1 };
   if (!isDemon(monster)) return { dmgMult: 1, accMult: 1 };
-  return { dmgMult: 1.30, accMult: 1.30 };
+  const f = demonbaneFactor(30, monster);
+  return { dmgMult: f, accMult: f };
 }
 
 // -------------------------------------------------------------------------
@@ -610,18 +613,40 @@ function isDemon(monster: Monster): boolean {
 }
 
 /**
- * Melee demonbane weapons (dmg + acc multiplier against demon-attribute
- * monsters). Lesser demons actually get 100% of the bonus; K'ril, Nechryael,
- * Balfrug Kreeyath, Skotizo etc. qualify as demons in the monster data.
- * Emberlight is the 2024 upgrade that replaces Arclight.
+ * Some demons only take a fraction of the demonbane bonus (Duke Sucellus
+ * 70%), and Yama takes extra (120%). Mirrors the wiki calc's
+ * demonbaneVulnerability (BaseCalc:702-714); the default is 100%.
+ */
+function demonbaneVulnerability(monster: Monster): number {
+  if (monster.name === 'Duke Sucellus') return 70;
+  if (monster.id === 14176) return 120; // Yama
+  if (monster.id === 14179) return 200; // Yama's Void flare
+  return 100;
+}
+
+/** The wiki calc's demonbaneFactor: base + trunc(base × trunc(pct·vuln/100)/100).
+ *  For integer bases that equals a plain ×(1 + pct'/100) multiplier, so we
+ *  return one. */
+function demonbaneFactor(weaponPct: number, monster: Monster): number {
+  return 1 + Math.trunc(weaponPct * demonbaneVulnerability(monster) / 100) / 100;
+}
+
+/**
+ * Melee demonbane weapons against demon-attribute monsters. Arclight /
+ * Emberlight boost damage AND accuracy (+70%); Silverlight / Darklight are
+ * damage-only (+60%) — the wiki calc gives them no accuracy factor
+ * (PlayerVsNPCCalc L261-263 acc vs L435-437 dmg). The bonus is scaled by the
+ * monster's demonbane vulnerability (Duke Sucellus 70%, Yama 120%).
  */
 export function demonbaneMult(weapon: EquipmentPiece | null, monster: Monster): { dmgMult: number; accMult: number } {
   if (!weapon || !isDemon(monster)) return { dmgMult: 1, accMult: 1 };
-  if (weapon.name === 'Emberlight') return { dmgMult: 1.7, accMult: 1.7 };
-  if (weapon.name === 'Arclight') return { dmgMult: 1.7, accMult: 1.7 };
-  if (weapon.name === 'Darklight') return { dmgMult: 1.6, accMult: 1.6 };
-  if (weapon.name === 'Silverlight') return { dmgMult: 1.6, accMult: 1.6 };
-  if (weapon.name === 'Silverlight (dyed)') return { dmgMult: 1.6, accMult: 1.6 };
+  if (weapon.name === 'Emberlight' || weapon.name === 'Arclight') {
+    const f = demonbaneFactor(70, monster);
+    return { dmgMult: f, accMult: f };
+  }
+  if (weapon.name === 'Darklight' || weapon.name === 'Silverlight' || weapon.name === 'Silverlight (dyed)') {
+    return { dmgMult: demonbaneFactor(60, monster), accMult: 1 };
+  }
   return { dmgMult: 1, accMult: 1 };
 }
 
