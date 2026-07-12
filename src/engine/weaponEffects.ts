@@ -892,13 +892,20 @@ function isUndead(monster: Monster): boolean {
 const SALVE_RE = /^Salve amulet\s*(\(e\)|\(i\)|\(ei\))?$/i;
 const SLAYER_HELM_I_RE = /^Slayer helmet\s*\(i\)/i;
 const BLACK_MASK_I_RE = /^Black mask\s*\(i\)/i;
+// Any Black mask / Slayer helmet variant — regular or imbued. The melee bonus
+// does NOT need the imbue (isWearingBlackMask in the wiki calc); only the
+// ranged/magic +15% is imbued-only (isWearingImbuedBlackMask).
+const SLAYER_HELM_RE = /^Slayer helmet/i;
+const BLACK_MASK_RE = /^Black mask/i;
 const AVARICE_RE = /^Amulet of avarice/i;
 
 /**
  * Salve amulet / Slayer helm / Black mask damage and accuracy bonuses.
- * Salve applies vs undead, slayer helm (i) / black mask (i) apply only while
- * `onSlayerTask`. Salve and slayer helm DO NOT stack — Salve wins when both
- * would apply. Returns identity when nothing applies.
+ * Salve applies vs undead. Black mask / Slayer helmet (any variant) give the
+ * melee 7/6 while `onSlayerTask` against an assignable monster; the imbued
+ * (i) variants additionally give +15% to ranged and magic. Salve and slayer
+ * helm DO NOT stack — Salve wins when both would apply. Returns identity
+ * when nothing applies.
  */
 export function targetTypeBonus(
   loadout: PlayerLoadout,
@@ -931,9 +938,14 @@ export function targetTypeBonus(
     return { dmgMult: 1.2, accMult: 1.2 };
   }
 
-  if (loadout.onSlayerTask && head && (SLAYER_HELM_I_RE.test(head.name) || BLACK_MASK_I_RE.test(head.name))) {
-    if (style === 'melee') return { dmgMult: 7 / 6, accMult: 7 / 6 };
-    if (style === 'ranged' || style === 'magic') return { dmgMult: 1.15, accMult: 1.15 };
+  // The slayer bonus needs the monster to actually be assignable as a task
+  // (isSlayerMonster in the wiki calc) — the on-task checkbox alone must not
+  // buff unassignable targets like most raid bosses.
+  if (loadout.onSlayerTask && monster.is_slayer_monster && head) {
+    const anyMask = SLAYER_HELM_RE.test(head.name) || BLACK_MASK_RE.test(head.name);
+    const imbued = SLAYER_HELM_I_RE.test(head.name) || BLACK_MASK_I_RE.test(head.name);
+    if (style === 'melee' && anyMask) return { dmgMult: 7 / 6, accMult: 7 / 6 };
+    if ((style === 'ranged' || style === 'magic') && imbued) return { dmgMult: 1.15, accMult: 1.15 };
   }
 
   return TARGET_IDENTITY;

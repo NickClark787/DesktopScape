@@ -43,8 +43,10 @@ import { CANDIDATE_SPELL_NAMES } from './spells';
  */
 const SYNERGY_FORCE_INCLUDE: ReadonlyArray<RegExp> = [
   /^Salve amulet/i,
-  /^Slayer helmet \(i\)/i,
-  /^Black mask \(i\)/i,
+  // Any variant — the regular (non-imbued) mask/helm carries the melee 7/6
+  // slayer bonus too, so owned-only searches must get to evaluate it.
+  /^Slayer helmet/i,
+  /^Black mask/i,
   /^Berserker necklace( \(or\))?$/i,
   /^Twisted bow$/i,
   /^Dragon hunter (crossbow|lance|wand)$/i,

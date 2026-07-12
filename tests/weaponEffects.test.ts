@@ -973,8 +973,12 @@ describe('target type bonus (Salve / Slayer / Black mask)', () => {
   const salveEi = piece({ name: 'Salve amulet (ei)', slot: 'neck' });
   const slayerHelm = piece({ name: 'Slayer helmet (i)', slot: 'head' });
   const blackMask = piece({ name: 'Black mask (i)', slot: 'head' });
+  const regularHelm = piece({ name: 'Slayer helmet', slot: 'head' });
+  const regularMask = piece({ name: 'Black mask', slot: 'head' });
   const undead = monster({ attributes: ['undead'] });
   const human = monster();
+  // The slayer-helm bonus additionally needs an assignable target.
+  const taskMonster = monster({ is_slayer_monster: true });
 
   it('Salve (base) vs undead melee: 7/6 dmg & acc', () => {
     const r = targetTypeBonus(loadout({ equipment: { neck: salve } }), undead, 'melee');
@@ -1001,14 +1005,37 @@ describe('target type bonus (Salve / Slayer / Black mask)', () => {
   });
 
   it('Slayer helm (i) only fires on slayer task', () => {
-    expect(targetTypeBonus(loadout({ onSlayerTask: false, equipment: { head: slayerHelm } }), human, 'melee')).toEqual({ dmgMult: 1, accMult: 1 });
-    const r = targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: slayerHelm } }), human, 'melee');
+    expect(targetTypeBonus(loadout({ onSlayerTask: false, equipment: { head: slayerHelm } }), taskMonster, 'melee')).toEqual({ dmgMult: 1, accMult: 1 });
+    const r = targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: slayerHelm } }), taskMonster, 'melee');
     expect(r.dmgMult).toBeCloseTo(7 / 6, 6);
   });
 
   it('Black mask (i) on slayer task ranged: +15%', () => {
-    const r = targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: blackMask } }), human, 'ranged');
+    const r = targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: blackMask } }), taskMonster, 'ranged');
     expect(r.dmgMult).toBeCloseTo(1.15, 6);
+  });
+
+  it('regular Black mask / Slayer helmet give the melee 7/6 on task (no imbue needed)', () => {
+    // Reference: PlayerVsNPCCalc melee uses isWearingBlackMask (regular OR
+    // imbued); the imbue is only required for ranged/magic.
+    for (const head of [regularMask, regularHelm]) {
+      const r = targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head } }), taskMonster, 'melee');
+      expect(r.dmgMult).toBeCloseTo(7 / 6, 6);
+      expect(r.accMult).toBeCloseTo(7 / 6, 6);
+    }
+  });
+
+  it('regular Black mask / Slayer helmet give nothing to ranged/magic', () => {
+    for (const head of [regularMask, regularHelm]) {
+      expect(targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head } }), taskMonster, 'ranged')).toEqual({ dmgMult: 1, accMult: 1 });
+      expect(targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head } }), taskMonster, 'magic')).toEqual({ dmgMult: 1, accMult: 1 });
+    }
+  });
+
+  it('slayer bonus needs an assignable (is_slayer_monster) target', () => {
+    // human fixture has is_slayer_monster: false — checkbox alone must not buff.
+    expect(targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: slayerHelm } }), human, 'melee')).toEqual({ dmgMult: 1, accMult: 1 });
+    expect(targetTypeBonus(loadout({ onSlayerTask: true, equipment: { head: blackMask } }), human, 'ranged')).toEqual({ dmgMult: 1, accMult: 1 });
   });
 });
 
