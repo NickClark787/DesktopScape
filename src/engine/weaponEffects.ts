@@ -48,7 +48,7 @@ function isCrossbow(weapon: EquipmentPiece | null): boolean {
  *   - Ruby: dmg of current HP 20% → 22%, cap 100 → 110
  *   - Diamond: max hit mult 1.15 → 1.26
  *   - Onyx: max hit mult 1.20 → 1.32
- *   - Dragonstone: max hit mult 1.20 → 1.32
+ *   - Dragonstone: flat bonus divisor 10 → 9 (trunc(rangedLvl×2/9))
  * (Jade/red topaz/sapphire don't benefit due to rounding — we don't model those.)
  * Wiki: https://oldschool.runescape.wiki/w/Zaryte_crossbow
  */
@@ -66,7 +66,9 @@ const ENCHANTED_RE = /\(e\)$/i;
 /**
  * Expected per-swing damage accounting for enchanted-bolt procs. Returns
  * null if the ammo isn't an enchanted crossbow bolt or the weapon isn't
- * a crossbow. Proc rates/effects from OSRS wiki.
+ * a crossbow. Proc rates/effects from the wiki calc's lib/dists/bolts.ts.
+ * `rangedLevel` is the visible (potion-boosted) Ranged level — the
+ * Dragonstone proc scales off it rather than the max hit.
  */
 export function boltProcAvgPerSwing(
   weapon: EquipmentPiece | null,
@@ -74,6 +76,7 @@ export function boltProcAvgPerSwing(
   maxHit: number,
   accuracy: number,
   monster: Monster,
+  rangedLevel: number,
 ): number | null {
   if (!isCrossbow(weapon) || !ammo || !ENCHANTED_RE.test(ammo.name)) return null;
 
@@ -111,15 +114,15 @@ export function boltProcAvgPerSwing(
     return 0.89 * normalAvg + 0.11 * procAvg;
   }
 
-  // Dragonstone (e) — Dragon's Breath: 6% proc, +20% max hit. Ineffective vs dragons/fire-immune.
-  // ZCB: max hit mult 1.32.
+  // Dragonstone (e) — Dragon's Breath: 6% of ACCURATE hits add a flat
+  // trunc(rangedLvl × 2/10) bonus (ZCB: /9) on top of the rolled damage —
+  // NOT a max-hit multiplier (wiki calc dragonstoneBolts + bonusDamageTransform
+  // with accurateOnly=true). Ineffective vs dragons/fire-immune targets.
   if (DRAGONSTONE_BOLTS_RE.test(ammo.name)) {
     const attrs = (monster.attributes || []).map((a) => a.toLowerCase());
     if (attrs.includes('dragon') || attrs.includes('fiery')) return normalAvg;
-    const mult = zcb ? 1.32 : 1.20;
-    const procMax = Math.trunc(maxHit * mult);
-    const procAvg = accuracy * (procMax / 2);
-    return 0.94 * normalAvg + 0.06 * procAvg;
+    const bonusDmg = Math.trunc((rangedLevel * 2) / (zcb ? 9 : 10));
+    return normalAvg + accuracy * 0.06 * bonusDmg;
   }
 
   return null;
@@ -260,6 +263,7 @@ export function specialAvgPerSwing(
   maxHit: number,
   accuracy: number,
   monster: Monster,
+  rangedLevel: number,
 ): number | null {
   if (isScythe(weapon)) {
     return scytheAvgPerSwing(maxHit, accuracy, monster.size);
@@ -267,7 +271,7 @@ export function specialAvgPerSwing(
   if (isDualMacuahuitl(weapon)) {
     return dualMacuahuitlAvgPerSwing(maxHit, accuracy);
   }
-  const bolt = boltProcAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
+  const bolt = boltProcAvgPerSwing(weapon, ammo, maxHit, accuracy, monster, rangedLevel);
   if (bolt !== null) return bolt;
   return null;
 }

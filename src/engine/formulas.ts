@@ -724,8 +724,10 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
 
   // Most weapons deal accuracy*max/2 damage per swing. Scythe and friends
   // deviate — delegate to weaponEffects for those, fall back to the default.
-  const ammo = loadout.equipment.ammo ?? null;
-  const specialAvg = specialAvgPerSwing(weapon, ammo, maxHit, accuracy, monster);
+  // Bolt procs only fire when actually shooting (the wiki calc gates them on
+  // style === ranged), so other styles don't see the ammo at all here.
+  const ammo = style === 'ranged' ? loadout.equipment.ammo ?? null : null;
+  const specialAvg = specialAvgPerSwing(weapon, ammo, maxHit, accuracy, monster, sk.ranged);
   let avgHit = specialAvg ?? accuracy * (maxHit / 2);
 
   if (specialAvg !== null) {

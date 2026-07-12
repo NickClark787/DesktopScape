@@ -148,13 +148,13 @@ describe('crossbow bolt procs', () => {
 
   it('returns null for non-enchanted bolts', () => {
     const ammo = piece({ name: 'Ruby dragon bolts', slot: 'ammo' });
-    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.7, target)).toBeNull();
+    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.7, target, 99)).toBeNull();
   });
 
   it('returns null when weapon is not a crossbow', () => {
     const bow = piece({ name: 'Twisted bow', slot: 'weapon', category: 'Bow' });
     const ammo = piece({ name: 'Ruby dragon bolts (e)', slot: 'ammo' });
-    expect(boltProcAvgPerSwing(bow, ammo, 50, 0.7, target)).toBeNull();
+    expect(boltProcAvgPerSwing(bow, ammo, 50, 0.7, target, 99)).toBeNull();
   });
 
   it('Ruby (e): 6% proc deals 20% current HP, cap 100', () => {
@@ -163,14 +163,14 @@ describe('crossbow bolt procs', () => {
     // Normal avg = 0.5 * 25 = 12.5
     // Proc dmg = min(100, floor(1000 * 0.20)) = 200 → cap at 100
     // 0.94 * 12.5 + 0.06 * 100 = 11.75 + 6 = 17.75
-    expect(boltProcAvgPerSwing(xbow(), ammo, max, acc, target)).toBeCloseTo(17.75, 6);
+    expect(boltProcAvgPerSwing(xbow(), ammo, max, acc, target, 99)).toBeCloseTo(17.75, 6);
   });
 
   it('Ruby (e) with ZCB: dmg 22%, cap 110', () => {
     const ammo = piece({ name: 'Ruby dragon bolts (e)', slot: 'ammo' });
     // Proc dmg = min(110, floor(1000 * 0.22)) = 220 → cap at 110
     // 0.94 * 12.5 + 0.06 * 110 = 11.75 + 6.6 = 18.35
-    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(18.35, 6);
+    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target, 99)).toBeCloseTo(18.35, 6);
   });
 
   it('Diamond (e): 10% proc, +15% max, ignores defense', () => {
@@ -179,14 +179,14 @@ describe('crossbow bolt procs', () => {
     // Normal avg = 12.5
     // Proc max = trunc(50 * 1.15) = 57; proc avg = 57/2 = 28.5 (guaranteed)
     // 0.90 * 12.5 + 0.10 * 28.5 = 11.25 + 2.85 = 14.10
-    expect(boltProcAvgPerSwing(xbow(), ammo, max, acc, target)).toBeCloseTo(14.10, 6);
+    expect(boltProcAvgPerSwing(xbow(), ammo, max, acc, target, 99)).toBeCloseTo(14.10, 6);
   });
 
   it('Diamond (e) with ZCB: +26% max', () => {
     const ammo = piece({ name: 'Diamond bolts (e)', slot: 'ammo' });
     // Proc max = trunc(50 * 1.26) = 63; proc avg = 63/2 = 31.5
     // 0.90 * 12.5 + 0.10 * 31.5 = 11.25 + 3.15 = 14.40
-    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(14.40, 6);
+    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target, 99)).toBeCloseTo(14.40, 6);
   });
 
   it('Onyx (e) with ZCB: 11% proc, +32% max, accuracy still rolls', () => {
@@ -194,20 +194,33 @@ describe('crossbow bolt procs', () => {
     // Proc rate 11% (wiki calc), accurate-only. Proc max = trunc(50 * 1.32) = 66;
     // proc avg = acc * 66/2 = 0.5 * 33 = 16.5
     // 0.89 * 12.5 + 0.11 * 16.5 = 11.125 + 1.815 = 12.94
-    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target)).toBeCloseTo(12.94, 6);
+    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target, 99)).toBeCloseTo(12.94, 6);
   });
 
   it('Onyx (e): ineffective vs undead (no life to leech)', () => {
     const ammo = piece({ name: 'Onyx bolts (e)', slot: 'ammo' });
     const undead = monster({ attributes: ['undead'], skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } });
     // Falls back to normal avg only: 0.5 * 25 = 12.5
-    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, undead)).toBeCloseTo(12.5, 6);
+    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, undead, 99)).toBeCloseTo(12.5, 6);
+  });
+
+  it('Dragonstone (e): flat rangedLvl-scaled bonus on 6% of accurate hits', () => {
+    const ammo = piece({ name: 'Dragonstone bolts (e)', slot: 'ammo' });
+    // bonus = trunc(99×2/10) = 19; avg = 12.5 + 0.5×0.06×19 = 13.07
+    // (wiki calc dragonstoneBolts — NOT a +20% max-hit proc)
+    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, target, 99)).toBeCloseTo(13.07, 6);
+  });
+
+  it('Dragonstone (e) with ZCB: divisor 9', () => {
+    const ammo = piece({ name: 'Dragonstone bolts (e)', slot: 'ammo' });
+    // bonus = trunc(99×2/9) = 22; avg = 12.5 + 0.5×0.06×22 = 13.16
+    expect(boltProcAvgPerSwing(zcb, ammo, 50, 0.5, target, 99)).toBeCloseTo(13.16, 6);
   });
 
   it('Dragonstone (e): immune to dragons', () => {
     const ammo = piece({ name: 'Dragonstone bolts (e)', slot: 'ammo' });
     const dragon = monster({ attributes: ['dragon'], skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } });
-    const result = boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, dragon);
+    const result = boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, dragon, 99);
     // Should fall back to normal avg only
     expect(result).toBeCloseTo(12.5, 6);
   });
@@ -215,7 +228,7 @@ describe('crossbow bolt procs', () => {
   it('Dragonstone (e): immune to fiery monsters too', () => {
     const ammo = piece({ name: 'Dragonstone bolts (e)', slot: 'ammo' });
     const fiery = monster({ attributes: ['fiery'], skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } });
-    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, fiery)).toBeCloseTo(12.5, 6);
+    expect(boltProcAvgPerSwing(xbow(), ammo, 50, 0.5, fiery, 99)).toBeCloseTo(12.5, 6);
   });
 
   it('boltProcName labels ZCB variants distinctly', () => {
@@ -1072,23 +1085,23 @@ describe('target type bonus (Salve / Slayer / Black mask)', () => {
 describe('specialAvgPerSwing dispatcher', () => {
   it('returns null for normal weapons', () => {
     const sword = piece({ name: 'Abyssal whip', slot: 'weapon' });
-    expect(specialAvgPerSwing(sword, null, 30, 0.5, monster())).toBeNull();
+    expect(specialAvgPerSwing(sword, null, 30, 0.5, monster(), 99)).toBeNull();
   });
 
   it('dispatches to scythe for scythe', () => {
     const scythe = piece({ name: 'Scythe of vitur', slot: 'weapon' });
-    expect(specialAvgPerSwing(scythe, null, 50, 1, monster({ size: 1 }))).toBe(25);
+    expect(specialAvgPerSwing(scythe, null, 50, 1, monster({ size: 1 }), 99)).toBe(25);
   });
 
   it('dispatches to dual macuahuitl', () => {
     const macu = piece({ name: 'Dual macuahuitl', slot: 'weapon' });
-    expect(specialAvgPerSwing(macu, null, 50, 1, monster())).toBeCloseTo(50, 6);
+    expect(specialAvgPerSwing(macu, null, 50, 1, monster(), 99)).toBeCloseTo(50, 6);
   });
 
   it('dispatches to bolt proc for crossbow + enchanted bolts', () => {
     const xbow = piece({ name: 'Armadyl crossbow', slot: 'weapon', category: 'Crossbow' });
     const ammo = piece({ name: 'Diamond bolts (e)', slot: 'ammo' });
-    const r = specialAvgPerSwing(xbow, ammo, 50, 0.5, monster({ skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } }));
+    const r = specialAvgPerSwing(xbow, ammo, 50, 0.5, monster({ skills: { atk: 1, def: 1, hp: 1000, magic: 1, ranged: 1, str: 1 } }), 99);
     expect(r).toBeCloseTo(14.10, 6);
   });
 });
