@@ -36,6 +36,7 @@ export default defineConfig({
       alias: {
         '@': resolve(__dirname, 'src/renderer'),
         '@engine': resolve(__dirname, 'src/engine'),
+        '@sim': resolve(__dirname, 'src/sim'),
         '@shared': resolve(__dirname, 'src/shared'),
         '@data': resolve(__dirname, 'resources/data'),
       },
