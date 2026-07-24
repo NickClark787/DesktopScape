@@ -203,7 +203,13 @@ export interface AppState {
   saveLoadout: (name: string) => void;
   loadLoadout: (name: string) => void;
   deleteLoadout: (name: string) => void;
-  setStyle: (s: CombatStyle) => void;
+  /**
+   * Switch the active combat style. A manual tab click clears the pinned
+   * stance/attack-style overrides (they were chosen for the old style);
+   * pass `keepOverrides` when the switch is automatic (the optimizer landing
+   * on the winning style) — the pins were inputs to that very computation.
+   */
+  setStyle: (s: CombatStyle, opts?: { keepOverrides?: boolean }) => void;
   setMonster: (id: number, version?: string | null) => void;
   setSkill: (k: keyof PlayerLoadout['skills'], v: number) => void;
   togglePrayer: (k: keyof Prayers) => void;
@@ -393,10 +399,10 @@ export const useApp = create<AppState>((set) => ({
     equipment: {},
     spell: null,
   },
-  setStyle: (s) => set((st) => ({
+  setStyle: (s, opts) => set((st) => ({
     style: s,
-    stanceOverride: null,
-    attackStyleOverride: null,
+    stanceOverride: opts?.keepOverrides ? st.stanceOverride : null,
+    attackStyleOverride: opts?.keepOverrides ? st.attackStyleOverride : null,
     loadout: {
       ...st.loadout,
       style: s,

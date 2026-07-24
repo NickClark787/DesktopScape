@@ -228,13 +228,33 @@ export default function App() {
     }
 
     setCandidates(next);
-    // Push the currently-selected style's pick into the store so the gear
-    // grid populates immediately. Other styles are cached for tab flips.
-    const cur = next[state.style];
+    // Land on the winning style: "Find best setup" answers "what should I
+    // bring", so the style tabs auto-select the highest-DPS candidate
+    // instead of leaving the user parked on whatever tab was open. Seeding
+    // with the current style's DPS keeps the tab put on exact ties.
+    let bestStyle: CombatStyle = state.style;
+    let bestDps = next[state.style]?.result.dps ?? -Infinity;
+    for (const s of ['melee', 'ranged', 'magic'] as const) {
+      const dps = next[s]?.result.dps;
+      if (dps !== undefined && dps > bestDps) {
+        bestDps = dps;
+        bestStyle = s;
+      }
+    }
+    // keepOverrides: pinned stance/attack-style were inputs to this run —
+    // an automatic switch must not silently drop them (a manual tab click
+    // still clears them, as before).
+    if (bestStyle !== state.style) state.setStyle(bestStyle, { keepOverrides: true });
+    // Push the winner's pick into the store so the gear grid populates
+    // immediately. Other styles stay cached for tab flips.
+    const cur = next[bestStyle];
     if (cur) {
       state.setEquipment(cur.equipment);
       if (cur.style === 'magic' && cur.spell !== undefined) state.setSpell(cur.spell);
       if (cur.stance !== undefined) state.setStance(cur.stance);
+      // Keep the loadout's attack style in step with the recommendation
+      // (setStyle resets melee to 'slash'; the winner may be stab/crush).
+      state.setAttackStyle(cur.attackStyle);
     }
     setComputing(false);
   }
