@@ -1,0 +1,26 @@
+{
+  "name": "BiS — Ranged",
+  "description": "Best-in-slot Twisted bow setup for Zuk, Jad, and magers.",
+  "gear": {
+    "head": "Masori mask (f)",
+    "cape": "Dizana's quiver",
+    "neck": "Necklace of anguish",
+    "weapon": "Twisted bow",
+    "ammo": "Dragon arrow",
+    "body": "Masori body (f)",
+    "legs": "Masori chaps (f)",
+    "hands": "Zaryte vambraces",
+    "feet": "Pegasian boots",
+    "ring": "Ring of suffering (ri)"
+  },
+  "gearVersions": {},
+  "inventory": [
+    { "item": "divine_ranging", "qty": 1 },
+    { "item": "super_restore", "qty": 6 },
+    { "item": "saradomin_brew", "qty": 8 },
+    { "item": "anglerfish", "qty": 6 },
+    { "item": "karambwan", "qty": 4 }
+  ],
+  "skills": { "atk": 99, "str": 99, "def": 99, "hp": 99, "magic": 99, "ranged": 99, "prayer": 99 },
+  "settings": { "latency": { "pingMs": 0, "jitterMs": 0, "packetLossPct": 0 } }
+}

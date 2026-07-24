@@ -23,9 +23,10 @@ import { calcDps } from '../engine/formulas';
 import { rankStyles, styleScores } from './utils/styleRanking';
 import { applySlotChange } from './utils/equipment';
 import { ColosseumTab } from './components/colosseum/ColosseumTab';
+import { InfernoTab } from './components/inferno/InfernoTab';
 
-/** Top-level app views: the optimizer and the Sol Heredit simulator. */
-type AppView = 'setup' | 'colosseum';
+/** Top-level app views: the optimizer and the two fight simulators. */
+type AppView = 'setup' | 'colosseum' | 'inferno';
 import type { AttackType, BestSetupCandidate, CombatStyle, EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
 
@@ -422,6 +423,10 @@ export default function App() {
         <div className="flex-1 overflow-auto">
           <ColosseumTab equipment={state.equipment} monsters={state.monsters} />
         </div>
+      ) : view === 'inferno' ? (
+        <div className="flex-1 overflow-auto">
+          <InfernoTab equipment={state.equipment} monsters={state.monsters} />
+        </div>
       ) : (
       <div className="flex-1 overflow-auto">
         <div className="p-5 grid gap-5 grid-cols-[340px_1fr]">
@@ -598,6 +603,9 @@ function Header({
           </button>
           <button className="pill-tab text-xs" data-active={view === 'colosseum'} onClick={() => onViewChange('colosseum')}>
             Colosseum
+          </button>
+          <button className="pill-tab text-xs" data-active={view === 'inferno'} onClick={() => onViewChange('inferno')}>
+            Inferno
           </button>
         </nav>
       </div>

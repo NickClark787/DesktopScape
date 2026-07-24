@@ -1,0 +1,27 @@
+{
+  "name": "Budget — Bowfa",
+  "description": "Bow of Faerdhinen + crystal armour, an achievable first-cape setup.",
+  "gear": {
+    "head": "Crystal helm",
+    "cape": "Ava's assembler",
+    "neck": "Amulet of fury",
+    "weapon": "Bow of faerdhinen",
+    "body": "Crystal body",
+    "legs": "Crystal legs",
+    "hands": "Barrows gloves",
+    "feet": "Pegasian boots",
+    "ring": "Archers ring (i)"
+  },
+  "gearVersions": {
+    "weapon": "Charged"
+  },
+  "inventory": [
+    { "item": "ranging_potion", "qty": 1 },
+    { "item": "super_restore", "qty": 6 },
+    { "item": "saradomin_brew", "qty": 8 },
+    { "item": "anglerfish", "qty": 5 },
+    { "item": "karambwan", "qty": 4 }
+  ],
+  "skills": { "atk": 90, "str": 90, "def": 90, "hp": 92, "magic": 85, "ranged": 92, "prayer": 77 },
+  "settings": { "latency": { "pingMs": 30, "jitterMs": 10, "packetLossPct": 0 } }
+}
