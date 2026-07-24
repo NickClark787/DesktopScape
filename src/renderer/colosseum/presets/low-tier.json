@@ -1,0 +1,30 @@
+{
+  "name": "Low Tier",
+  "description": "Budget entry-level melee for learning the fight.",
+  "gear": {
+    "head": "Helm of neitiznot",
+    "cape": "Fire cape",
+    "neck": "Amulet of fury",
+    "weapon": "Abyssal whip",
+    "body": "Fighter torso",
+    "shield": "Dragon defender",
+    "legs": "Dragon platelegs",
+    "hands": "Barrows gloves",
+    "feet": "Dragon boots",
+    "ring": "Berserker ring"
+  },
+  "gearVersions": {},
+  "attackStyle": "slash",
+  "stance": "aggressive",
+  "inventory": [
+    { "item": "super_combat", "qty": 1 },
+    { "item": "super_restore", "qty": 6 },
+    { "item": "sara_brew", "qty": 4 },
+    { "item": "shark", "qty": 13 },
+    { "item": "karambwan", "qty": 4 }
+  ],
+  "skills": { "atk": 90, "str": 90, "def": 85, "hp": 90, "magic": 80, "ranged": 80, "prayer": 77 },
+  "settings": {
+    "latency": { "pingMs": 30, "jitterMs": 10, "packetLossPct": 0 }
+  }
+}

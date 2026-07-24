@@ -1,0 +1,31 @@
+{
+  "name": "BiS — Standard Supplies",
+  "description": "Best-in-slot melee with a normal colosseum supply loadout.",
+  "gear": {
+    "head": "Torva full helm",
+    "cape": "Infernal cape",
+    "neck": "Amulet of torture",
+    "weapon": "Scythe of vitur",
+    "body": "Torva platebody",
+    "legs": "Torva platelegs",
+    "hands": "Ferocious gloves",
+    "feet": "Primordial boots",
+    "ring": "Ultor ring"
+  },
+  "gearVersions": {
+    "weapon": "Charged"
+  },
+  "attackStyle": "slash",
+  "stance": "aggressive",
+  "inventory": [
+    { "item": "divine_super_combat", "qty": 1 },
+    { "item": "super_restore", "qty": 8 },
+    { "item": "sara_brew", "qty": 6 },
+    { "item": "anglerfish", "qty": 9 },
+    { "item": "karambwan", "qty": 4 }
+  ],
+  "skills": { "atk": 99, "str": 99, "def": 99, "hp": 99, "magic": 99, "ranged": 99, "prayer": 99 },
+  "settings": {
+    "latency": { "pingMs": 0, "jitterMs": 0, "packetLossPct": 0 }
+  }
+}

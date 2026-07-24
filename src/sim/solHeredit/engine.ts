@@ -498,6 +498,9 @@ export class SolHereditSim {
         accuracy = Math.min(1, accuracy * def.accuracyMult);
         maxHit = Math.floor(maxHit * def.damageMult);
         spec = true;
+        // Convenience: hop back to the main set once the spec lands, so a
+        // single keypress models the standard "swap, spec, swap back".
+        p.activeGearSet = 0;
       }
       p.specArmed = false;
     }

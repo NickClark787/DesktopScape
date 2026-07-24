@@ -22,6 +22,10 @@ import type { UpgradeSuggestion } from '../engine/upgradeAdvisor';
 import { calcDps } from '../engine/formulas';
 import { rankStyles, styleScores } from './utils/styleRanking';
 import { applySlotChange } from './utils/equipment';
+import { ColosseumTab } from './components/colosseum/ColosseumTab';
+
+/** Top-level app views: the optimizer and the Sol Heredit simulator. */
+type AppView = 'setup' | 'colosseum';
 import type { AttackType, BestSetupCandidate, CombatStyle, EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
 
@@ -36,6 +40,8 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string>('');
   const [pickerSlot, setPickerSlot] = useState<Exclude<EquipmentSlot, '2h'> | null>(null);
+  /** Which top-level view is showing: the optimizer or the Colosseum sim. */
+  const [view, setView] = useState<AppView>('setup');
   /** Non-empty when the initial data load failed — drives the retry screen. */
   const [loadError, setLoadError] = useState('');
   // One live notice-clearing timer at a time; cleared on unmount and on every
@@ -409,7 +415,14 @@ export default function App() {
         onRefresh={refreshData}
         notice={notice}
         dataMeta={state.dataMeta}
+        view={view}
+        onViewChange={setView}
       />
+      {view === 'colosseum' ? (
+        <div className="flex-1 overflow-auto">
+          <ColosseumTab equipment={state.equipment} monsters={state.monsters} />
+        </div>
+      ) : (
       <div className="flex-1 overflow-auto">
         <div className="p-5 grid gap-5 grid-cols-[340px_1fr]">
           <aside className="reveal-stagger flex flex-col gap-4">
@@ -520,7 +533,8 @@ export default function App() {
           </main>
         </div>
       </div>
-      {pickerSlot && (
+      )}
+      {view === 'setup' && pickerSlot && (
         <GearPickerModal
           slot={pickerSlot}
           equipment={state.equipment}
@@ -550,11 +564,15 @@ function Header({
   onRefresh,
   notice,
   dataMeta,
+  view,
+  onViewChange,
 }: {
   refreshing: boolean;
   onRefresh: () => void;
   notice: string;
   dataMeta: DataMeta | null;
+  view: AppView;
+  onViewChange: (v: AppView) => void;
 }) {
   return (
     <header className="relative flex items-center justify-between px-5 py-3 border-b border-border-strong bg-bg-soft shadow-panel">
@@ -573,9 +591,15 @@ function Header({
         >
           <span className="text-accent">Gear</span>Scape
         </h1>
-        <span className="text-[11px] text-accent/80 uppercase tracking-[0.24em] font-pixel">
-          Best Setup
-        </span>
+        {/* Top-level view tabs. */}
+        <nav className="inline-flex gap-1 bg-bg border border-border rounded-lg p-1 ml-2">
+          <button className="pill-tab text-xs" data-active={view === 'setup'} onClick={() => onViewChange('setup')}>
+            Best Setup
+          </button>
+          <button className="pill-tab text-xs" data-active={view === 'colosseum'} onClick={() => onViewChange('colosseum')}>
+            Colosseum
+          </button>
+        </nav>
       </div>
       <div className="flex items-center gap-3">
         {notice && <span className="text-xs text-text-dim">{notice}</span>}
