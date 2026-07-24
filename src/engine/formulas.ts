@@ -29,6 +29,7 @@ import {
 } from './spells';
 import { applyRaidScalingDescribed } from './raidScaling';
 import { applyDefenceReductionDescribed } from './defenceReduction';
+import { styleImmunityReason } from './immunities';
 import {
   berserkerNeckBonus,
   boltProcName,
@@ -341,22 +342,8 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       : monster.defensive.crush;
     defenceRoll = (monster.skills.def + 9) * (defStyle + 64);
 
-    // Flying targets (Kree'arra, Aviansie, Smoke devil) can't be reached by
-    // most melee weapons — every attack misses. Halberds are the exception:
-    // their 2-tile reach lets them hit flying creatures from outside melee
-    // range, which is the canonical "melee Kree'arra" setup. Polearm
-    // category covers all halberds (Bronze through Noxious / Crystal /
-    // Corrupted), and contains no non-halberd entries in the data.
-    if ((monster.attributes || []).some((a) => a.toLowerCase() === 'flying')) {
-      const isHalberd = weapon?.category === 'Polearm';
-      if (!isHalberd) {
-        maxHit = 0;
-        attackRoll = 0;
-        effects.push({ name: 'Flying target', detail: `${monster.name} can only be meleed with a halberd` });
-      } else {
-        effects.push({ name: 'Halberd reach', detail: `${monster.name} hit at 2-tile range` });
-      }
-    }
+    // (Flying / immune targets are zeroed by the shared immunity gate below,
+    // after all max-hit math — see styleImmunityReason.)
 
     // Snapshot the unmodified base max hit & attack roll. The Obsidian set
     // bonus is a FLAT +10% of these *base* values (added below), so it must be
@@ -388,6 +375,14 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     maxHit = Math.trunc(maxHit * dm.dmgMult);
     attackRoll = Math.trunc(attackRoll * dm.accMult);
     if (weapon) pushIfFired(effects, weapon.name, dm, 'vs demon');
+
+    // Rat-bane weapons: flat +10 max hit vs rat-attribute targets, applied
+    // before the Inquisitor multiplier ("applies before inq", reference
+    // PlayerVsNPCCalc:449-451). Vs non-rats the immunity gate zeroes the hit.
+    if (weapon?.name === 'Bone mace' && (monster.attributes || []).some((a) => a.toLowerCase() === 'rat')) {
+      maxHit += 10;
+      effects.push({ name: weapon.name, detail: '+10 max hit vs rat' });
+    }
 
     // Inquisitor's armour — +0.5% per piece, +2.5% full set, crush only.
     const iq = inquisitorBonus(loadout.equipment, loadout.attackStyle);
@@ -430,6 +425,14 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     const bn = berserkerNeckBonus(loadout.equipment);
     maxHit = Math.trunc(maxHit * bn.dmgMult);
     pushIfFired(effects, 'Berserker necklace', bn);
+
+    // Leaf-bladed battleaxe vs leafy (Turoth/Kurask): ×47/40 max hit —
+    // the only leaf-bladed weapon with a damage bonus on top of bypassing
+    // the leafy immunity (reference PlayerVsNPCCalc:442-444).
+    if (weapon?.name === 'Leaf-bladed battleaxe' && (monster.attributes || []).some((a) => a.toLowerCase() === 'leafy')) {
+      maxHit = Math.trunc((maxHit * 47) / 40);
+      effects.push({ name: weapon.name, detail: '×47/40 max hit vs leafy' });
+    }
 
     // Colossal blade: +min(size*2, 10) flat damage to max hit.
     const cbBonus = colossalBladeBonus(weapon, monster);
@@ -500,6 +503,12 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     maxHit = Math.trunc(maxHit * sb.dmgMult);
     attackRoll = Math.trunc(attackRoll * sb.accMult);
     if (weapon) pushIfFired(effects, weapon.name, sb, 'vs demon');
+
+    // Bone shortbow: flat +10 max hit vs rat-attribute targets.
+    if (weapon?.name === 'Bone shortbow' && (monster.attributes || []).some((a) => a.toLowerCase() === 'rat')) {
+      maxHit += 10;
+      effects.push({ name: weapon.name, detail: '+10 max hit vs rat' });
+    }
   } else {
     // Magic.
     const magicLevel = sk.magic;
@@ -685,6 +694,30 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
         : 'Target-type bonus';
       pushIfFired(effects, src, tb);
     }
+  }
+
+  // Immunity gates — zero the hit when the target can't be damaged by this
+  // style/weapon combo (Zulrah vs melee, Tekton vs ranged, leafy without a
+  // leaf-bladed weapon, …). Applied after the max-hit math so the effects
+  // panel can still explain the zero.
+  const immunitySpell = style === 'magic' && (weapon === null || allowsSpellCasting(weapon))
+    ? spellByName(loadout.spell)
+    : null;
+  const immunityReason = styleImmunityReason(monster, {
+    style, weapon, ammo: loadout.equipment.ammo ?? null, spell: immunitySpell,
+  });
+  if (immunityReason) {
+    maxHit = 0;
+    attackRoll = 0;
+    effects.push({ name: 'Immune target', detail: immunityReason });
+  } else if (
+    style === 'melee'
+    && (monster.attributes || []).some((a) => a.toLowerCase() === 'flying')
+    && weapon
+  ) {
+    // Flying target reached with a halberd/salamander — surface why the
+    // melee hit connects at all (the canonical "melee Kree'arra" setup).
+    effects.push({ name: `${weapon.category} reach`, detail: `${monster.name} hit at 2-tile range` });
   }
 
   // Attack vs defence accuracy
