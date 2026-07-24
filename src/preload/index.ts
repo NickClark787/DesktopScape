@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC, CDN_BASE } from '../shared/constants';
+import type { EquipmentPiece, Monster } from '../shared/types';
 
 /** Metadata about the data files served by `loadData`. */
 export interface DataMeta {
@@ -10,10 +11,12 @@ export interface DataMeta {
 }
 
 const api = {
+  // The concrete types mirror what main/index.ts's loadData handler builds
+  // (readJsonArrayFile validates the array shape at the boundary). Spell data
+  // is NOT served here — the renderer bundles spells.json statically.
   loadData: () => ipcRenderer.invoke(IPC.loadData) as Promise<{
-    equipment: unknown[];
-    monsters: unknown[];
-    spells: unknown[];
+    equipment: EquipmentPiece[];
+    monsters: Monster[];
     meta: DataMeta;
   }>,
   refreshData: () => ipcRenderer.invoke(IPC.refreshData) as Promise<{ ok: boolean; files: string[] }>,

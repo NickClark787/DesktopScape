@@ -5,7 +5,7 @@ import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { IPC, CDN_JSON, PRICES_API, WIKI_API_USER_AGENT } from '../shared/constants';
 import { patchEquipmentData } from '../shared/dataPatches';
-import type { EquipmentPiece } from '../shared/types';
+import type { EquipmentPiece, Monster } from '../shared/types';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,12 +25,24 @@ function bundledDataPath(file: string): string {
   return join(__dirname, '..', '..', 'resources', 'data', file);
 }
 
-async function readDataFile(file: string): Promise<string> {
+/**
+ * Read + parse a data file, preferring the refreshed CDN cache. A cached file
+ * that can't be read OR parsed falls back to the bundled copy, so a corrupted
+ * cache (truncated download, disk issue) self-heals instead of wedging the
+ * app on every launch. The array check catches a CDN error page that slipped
+ * through as valid JSON.
+ */
+async function readJsonArrayFile<T>(file: string): Promise<T[]> {
   const cached = join(dataDir(), 'osrs-data', file);
   if (existsSync(cached)) {
-    try { return await readFile(cached, 'utf8'); } catch { /* fallthrough */ }
+    try {
+      const parsed: unknown = JSON.parse(await readFile(cached, 'utf8'));
+      if (Array.isArray(parsed)) return parsed as T[];
+    } catch { /* corrupted cache — fall back to bundled */ }
   }
-  return await readFile(bundledDataPath(file), 'utf8');
+  const parsed: unknown = JSON.parse(await readFile(bundledDataPath(file), 'utf8'));
+  if (!Array.isArray(parsed)) throw new Error(`${file}: expected a JSON array`);
+  return parsed as T[];
 }
 
 /**
@@ -101,10 +113,12 @@ function createWindow() {
 
 app.whenReady().then(() => {
   ipcMain.handle(IPC.loadData, async () => {
-    const [equipment, monsters, spells, meta] = await Promise.all([
-      readDataFile('equipment.json'),
-      readDataFile('monsters.json'),
-      readDataFile('spells.json'),
+    // NOTE: spells.json is NOT shipped over IPC — the renderer engine bundles
+    // it statically (spells.ts imports @data/spells.json), so sending a copy
+    // here was dead weight that could silently disagree with the bundle.
+    const [equipment, monsters, meta] = await Promise.all([
+      readJsonArrayFile<EquipmentPiece>('equipment.json'),
+      readJsonArrayFile<Monster>('monsters.json'),
       // Equipment is the most actively-updated file; use its mtime as the
       // canonical "data refreshed" timestamp.
       dataFileMeta('equipment.json'),
@@ -113,23 +127,31 @@ app.whenReady().then(() => {
     // returning to the renderer. Done here rather than in the renderer so
     // every consumer (calcDps, optimizer, picker UI, validator) sees the
     // corrected values.
-    const equipmentData: EquipmentPiece[] = JSON.parse(equipment);
-    patchEquipmentData(equipmentData);
-    return {
-      equipment: equipmentData,
-      monsters: JSON.parse(monsters),
-      spells: JSON.parse(spells),
-      meta,
-    };
+    patchEquipmentData(equipment);
+    return { equipment, monsters, meta };
   });
 
   ipcMain.handle(IPC.refreshData, async () => {
     const files = ['equipment.json', 'monsters.json', 'spells.json', 'equipment_aliases.json'];
-    for (const f of files) {
+    // Fetch + validate EVERY file before caching ANY of them, so a network
+    // failure or bad payload mid-refresh can't leave a mixed-version cache
+    // (equipment from today next to monsters from last month).
+    const bodies = await Promise.all(files.map(async (f) => {
       const body = await fetchCdn(f);
-      JSON.parse(body); // validate
-      await cacheDataFile(f, body);
-    }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(body);
+      } catch {
+        throw new Error(`CDN returned invalid JSON for ${f}`);
+      }
+      // Data files are arrays; equipment_aliases is an id→ids record.
+      const shapeOk = f === 'equipment_aliases.json'
+        ? parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        : Array.isArray(parsed);
+      if (!shapeOk) throw new Error(`CDN returned an unexpected shape for ${f}`);
+      return [f, body] as const;
+    }));
+    for (const [f, body] of bodies) await cacheDataFile(f, body);
     return { ok: true, files };
   });
 
@@ -149,6 +171,10 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+}).catch((err: unknown) => {
+  // whenReady only rejects if Electron fails to initialize — nothing to
+  // recover; log so packaged-app failures aren't silent.
+  console.error('[gearscape] app failed to start:', err);
 });
 
 app.on('window-all-closed', () => {

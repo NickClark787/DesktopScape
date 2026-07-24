@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from './state/store';
 import { MonsterPicker } from './components/MonsterPicker';
 import { StyleTabs } from './components/StyleTabs';
@@ -35,18 +35,34 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<string>('');
   const [pickerSlot, setPickerSlot] = useState<Exclude<EquipmentSlot, '2h'> | null>(null);
+  /** Non-empty when the initial data load failed — drives the retry screen. */
+  const [loadError, setLoadError] = useState('');
+  // One live notice-clearing timer at a time; cleared on unmount and on every
+  // new notice so an old timer can't wipe a fresh message early.
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
+  }, []);
 
   // The candidate displayed in the metrics block — whatever's cached for
   // the currently-selected style. Switching tabs flips this without any
   // recompute; running Find best setup repopulates all three at once.
   const candidate = candidates[state.style] ?? null;
 
+  /** Initial data load — also the retry path when the first attempt failed. */
+  async function loadData() {
+    setLoadError('');
+    try {
+      const data = await window.gearscape.loadData();
+      state.hydrate(data);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   // Load data on mount
   useEffect(() => {
-    (async () => {
-      const data = await window.gearscape.loadData();
-      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never, meta: data.meta });
-    })();
+    void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -334,13 +350,14 @@ export default function App() {
     try {
       await window.gearscape.refreshData();
       const data = await window.gearscape.loadData();
-      state.hydrate({ equipment: data.equipment as never, monsters: data.monsters as never, meta: data.meta });
+      state.hydrate(data);
       setNotice('Data refreshed from OSRS Wiki CDN.');
     } catch (e) {
-      setNotice(`Refresh failed: ${(e as Error).message}`);
+      setNotice(`Refresh failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setRefreshing(false);
-      setTimeout(() => setNotice(''), 4000);
+      if (noticeTimer.current !== null) clearTimeout(noticeTimer.current);
+      noticeTimer.current = setTimeout(() => setNotice(''), 4000);
     }
   }
 
@@ -354,10 +371,17 @@ export default function App() {
           >
             <span className="text-accent">Gear</span>Scape
           </h1>
-          <div className="flex items-center gap-3 text-text-dim text-sm">
-            <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-            Loading OSRS data…
-          </div>
+          {loadError ? (
+            <div className="flex flex-col items-center gap-3 max-w-md text-center">
+              <span className="text-sm text-osrs-red">Couldn't load OSRS data: {loadError}</span>
+              <button className="btn btn-primary" onClick={() => void loadData()}>Retry</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 text-text-dim text-sm">
+              <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+              Loading OSRS data…
+            </div>
+          )}
         </div>
       </div>
     );
