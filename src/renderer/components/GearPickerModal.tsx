@@ -3,6 +3,8 @@ import fuzzysort from 'fuzzysort';
 import type { AttackType, EquipmentPiece, EquipmentSlot, MeleeAttackType, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
 import { calcDps, stancesForStyle } from '../../engine/formulas';
 import { GearIcon } from './GearIcon';
+import { applySlotChange } from '../utils/equipment';
+import { summarizeStats } from '../utils/itemStats';
 
 type Slot = Exclude<EquipmentSlot, '2h'>;
 
@@ -114,10 +116,7 @@ export function GearPickerModal({ slot, equipment, current, ownedOnly, excludedI
     const baseStance: WeaponStance = loadout.stance ?? 'accurate';
     const baseAttack: AttackType = loadout.attackStyle;
     for (const p of results) {
-      const nextEquipment = { ...loadout.equipment };
-      nextEquipment[slot] = p;
-      if (slot === 'weapon' && p.isTwoHanded) nextEquipment.shield = null;
-      else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
+      const nextEquipment = applySlotChange(loadout.equipment, slot, p);
 
       // Non-weapon swaps inherit the current stance/attackStyle — gear
       // pieces don't change which stances are available, and re-probing
@@ -299,26 +298,5 @@ function DeltaPill({ delta }: { delta: number }) {
   );
 }
 
-/**
- * One-line stat summary for a list row. Picks the offensive style with the
- * largest bonus + the matching strength bonus, so a player can scan rows
- * for "what's actually different about this piece" without opening the
- * tooltip.
- */
-function summarizeStats(p: EquipmentPiece): string {
-  const off = p.offensive;
-  const styles: Array<[string, number]> = [
-    ['stab', off.stab], ['slash', off.slash], ['crush', off.crush],
-    ['magic', off.magic], ['ranged', off.ranged],
-  ];
-  const top = styles.reduce((a, b) => (Math.abs(b[1]) > Math.abs(a[1]) ? b : a));
-  const parts: string[] = [];
-  if (top[1]) parts.push(`${top[0]} ${top[1] > 0 ? '+' : ''}${top[1]}`);
-  const b = p.bonuses;
-  if (b.str) parts.push(`str ${b.str > 0 ? '+' : ''}${b.str}`);
-  if (b.ranged_str) parts.push(`rng str ${b.ranged_str > 0 ? '+' : ''}${b.ranged_str}`);
-  if (b.magic_str) parts.push(`mag dmg ${b.magic_str > 0 ? '+' : ''}${b.magic_str}%`);
-  if (b.prayer) parts.push(`pray ${b.prayer > 0 ? '+' : ''}${b.prayer}`);
-  if (p.slot === 'weapon' && p.speed) parts.push(`spd ${p.speed}t`);
-  return parts.join(' · ') || p.category || '—';
-}
+// (Row stat summaries come from utils/itemStats.summarizeStats — shared with
+// the gear tooltips so the magic-damage unit conversion lives in one place.)

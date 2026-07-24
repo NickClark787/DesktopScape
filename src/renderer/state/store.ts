@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { DefenceReduction, EquipmentPiece, EquipmentSlot, Monster, CombatStyle, PlayerLoadout, Prayers, Potions, RaidScaling, WeaponStance, MeleeAttackType } from '@shared/types';
 import { DEFAULT_PLAYER_SKILLS } from '@shared/constants';
+import { applySlotChange } from '../utils/equipment';
 import type { DataMeta } from '../../preload';
 
 /**
@@ -425,17 +426,10 @@ export const useApp = create<AppState>((set) => ({
     loadout: { ...st.loadout, equipment: eq },
     loadedLoadoutName: null,
   })),
-  setSlot: (slot, piece) => set((st) => {
-    const next = { ...st.loadout.equipment };
-    if (piece === null) {
-      next[slot] = null;
-    } else {
-      next[slot] = piece;
-      // 2h⇆shield mutual exclusion. Mirrors the optimizer's loadout assembly so
-      // the manual picker can't produce a state the engine would never propose.
-      if (slot === 'weapon' && piece.isTwoHanded) next.shield = null;
-      else if (slot === 'shield' && next.weapon?.isTwoHanded) next.weapon = null;
-    }
-    return { loadout: { ...st.loadout, equipment: next }, loadedLoadoutName: null };
-  }),
+  setSlot: (slot, piece) => set((st) => ({
+    // applySlotChange enforces the 2h⇆shield mutual exclusion shared with
+    // App.pickSlot and the gear picker's DPS probe.
+    loadout: { ...st.loadout, equipment: applySlotChange(st.loadout.equipment, slot, piece) },
+    loadedLoadoutName: null,
+  })),
 }));

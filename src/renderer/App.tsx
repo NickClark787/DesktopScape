@@ -21,6 +21,7 @@ import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../engine
 import type { UpgradeSuggestion } from '../engine/upgradeAdvisor';
 import { calcDps } from '../engine/formulas';
 import { rankStyles, styleScores } from './utils/styleRanking';
+import { applySlotChange } from './utils/equipment';
 import type { AttackType, BestSetupCandidate, CombatStyle, EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, WeaponStance } from '@shared/types';
 import type { DataMeta } from '../preload';
 
@@ -265,14 +266,8 @@ export default function App() {
     if (hint?.stance !== undefined) state.setStance(hint.stance);
     if (hint?.attackStyle !== undefined) state.setAttackStyle(hint.attackStyle);
     // Build the next equipment locally — store updates haven't flushed yet.
-    const nextEquipment = { ...state.loadout.equipment };
-    if (piece === null) {
-      nextEquipment[slot] = null;
-    } else {
-      nextEquipment[slot] = piece;
-      if (slot === 'weapon' && piece.isTwoHanded) nextEquipment.shield = null;
-      else if (slot === 'shield' && nextEquipment.weapon?.isTwoHanded) nextEquipment.weapon = null;
-    }
+    // Same applySlotChange the store's setSlot uses, so the two stay in sync.
+    const nextEquipment = applySlotChange(state.loadout.equipment, slot, piece);
     refreshCandidate(nextEquipment, effectiveStance, effectiveAttack, state.loadout.spell);
   }
 

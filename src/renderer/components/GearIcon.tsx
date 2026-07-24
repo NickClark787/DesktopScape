@@ -1,5 +1,10 @@
 import type { EquipmentPiece } from '@shared/types';
 import { isFailedImage, markFailedImage } from './imageCache';
+import { pieceTooltip } from '../utils/itemStats';
+
+// Formatting helpers live in utils/itemStats (pure, unit-tested); re-export
+// the ones GearGrid's styled tooltip consumes.
+export { pieceLabel, pieceStatLines } from '../utils/itemStats';
 
 /**
  * Single-piece equipment icon backed by the OSRS Wiki CDN.
@@ -32,67 +37,6 @@ interface Props {
   title?: string;
   /** Extra classes for the wrapping element (positioning, ring, etc). */
   className?: string;
-}
-
-export function pieceLabel(p: EquipmentPiece): string {
-  return p.version ? `${p.name} (${p.version})` : p.name;
-}
-
-/** Format a +N or -N number with an explicit sign for tooltip readability. */
-function s(n: number): string {
-  return n > 0 ? `+${n}` : String(n);
-}
-
-/**
- * Stat lines (without the name) for an item tooltip — shared between the
- * native `title` fallback here and the styled OSRS tooltip card in GearGrid.
- * Skips zero-valued lines so a typical chip isn't a wall of "+0"s.
- */
-export function pieceStatLines(p: EquipmentPiece): string[] {
-  const lines: string[] = [];
-  const slotLabel = p.slot === '2h' ? 'weapon (2h)' : p.slot;
-  lines.push(slotLabel);
-
-  const off = p.offensive;
-  const offParts = [
-    off.stab && `stab ${s(off.stab)}`,
-    off.slash && `slash ${s(off.slash)}`,
-    off.crush && `crush ${s(off.crush)}`,
-    off.magic && `magic ${s(off.magic)}`,
-    off.ranged && `ranged ${s(off.ranged)}`,
-  ].filter(Boolean);
-  if (offParts.length) lines.push(`Attack: ${offParts.join(', ')}`);
-
-  const b = p.bonuses;
-  const bonusParts = [
-    b.str && `str ${s(b.str)}`,
-    b.ranged_str && `ranged str ${s(b.ranged_str)}`,
-    b.magic_str && `magic dmg ${s(b.magic_str)}%`,
-    b.prayer && `prayer ${s(b.prayer)}`,
-  ].filter(Boolean);
-  if (bonusParts.length) lines.push(`Bonus: ${bonusParts.join(', ')}`);
-
-  const def = p.defensive;
-  const defParts = [
-    def.stab && `stab ${s(def.stab)}`,
-    def.slash && `slash ${s(def.slash)}`,
-    def.crush && `crush ${s(def.crush)}`,
-    def.magic && `magic ${s(def.magic)}`,
-    def.ranged && `ranged ${s(def.ranged)}`,
-  ].filter(Boolean);
-  if (defParts.length) lines.push(`Defence: ${defParts.join(', ')}`);
-
-  // Speed is only meaningful for weapons.
-  if (p.slot === 'weapon' && p.speed) {
-    lines.push(`Speed: ${p.speed} tick${p.speed === 1 ? '' : 's'}`);
-  }
-
-  return lines;
-}
-
-/** Full multi-line summary for a native `title` tooltip. */
-function pieceTooltip(p: EquipmentPiece): string {
-  return [pieceLabel(p), ...pieceStatLines(p)].join('\n');
 }
 
 export function GearIcon({ piece, size = 'sm', title, className }: Props) {

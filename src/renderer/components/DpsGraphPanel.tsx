@@ -39,8 +39,12 @@ export function DpsGraphPanel({ loadout, target }: Props) {
       points.push({ def, dps: calcDps(probe, m).dps });
     }
 
-    const currentDef = applyDefenceReduction(scaled, loadout.defenceReduction).skills.def;
-    const currentDps = calcDps(probe, { ...scaled, skills: { ...scaled.skills, def: currentDef } }).dps;
+    // Current point uses the FULLY reduced monster — Accursed sceptre also
+    // drains the Magic level, which matters for the magic-style DPS readout
+    // even though the x-axis only sweeps Defence.
+    const reducedMonster = applyDefenceReduction(scaled, loadout.defenceReduction);
+    const currentDef = reducedMonster.skills.def;
+    const currentDps = calcDps(probe, reducedMonster).dps;
     const maxDps = Math.max(...points.map((p) => p.dps), currentDps);
     return { points, baseDef, currentDef, currentDps, maxDps, reduced: currentDef !== baseDef };
   }, [loadout, target]);

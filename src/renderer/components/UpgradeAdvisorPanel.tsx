@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { BestSetupCandidate, CombatStyle, Monster, PlayerLoadout } from '@shared/types';
 import { findUpgrades, type UpgradeSuggestion } from '../../engine/upgradeAdvisor';
 import { GearIcon } from './GearIcon';
+import { formatGp } from '../utils/gp';
 
 type Scope = 'owned' | 'all';
 type SortBy = 'dps' | 'value';
@@ -28,13 +29,6 @@ const SLOT_LABEL: Record<string, string> = {
 };
 
 const fmt = (n: number, d = 2) => (isFinite(n) ? n.toFixed(d) : '∞');
-
-function fmtGp(n: number): string {
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}b`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}m`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}k`;
-  return `${Math.round(n)}`;
-}
 
 function ago(ts: number): string {
   const s = Math.max(0, Date.now() - ts) / 1000;
@@ -236,7 +230,7 @@ export function UpgradeAdvisorPanel({
                   ) : (
                     <span className="text-[11px] flex items-center gap-1">
                       <span className="uppercase tracking-wider font-bold text-accent">Buy</span>
-                      {price != null && <span className="text-text-dim">{fmtGp(price)}</span>}
+                      {price != null && <span className="text-text-dim">{formatGp(price)}</span>}
                       {value != null && isFinite(value) && <span className="text-text-faint">· {fmt(value, 2)} dps/m</span>}
                     </span>
                   )}
