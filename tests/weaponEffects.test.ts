@@ -878,46 +878,84 @@ describe('colossal blade', () => {
 // ------------ Vampyre / Efaritay ------------
 
 describe('vampyre weapons', () => {
-  const blisterwood = piece({ name: 'Blisterwood flail', slot: 'weapon' });
+  const flail = piece({ name: 'Blisterwood flail', slot: 'weapon' });
+  const sickle = piece({ name: 'Blisterwood sickle', slot: 'weapon' });
   const ivandis = piece({ name: 'Ivandis flail', slot: 'weapon' });
+  const rod = piece({ name: 'Rod of ivandis', slot: 'weapon' });
+  const silverlight = piece({ name: 'Silverlight', slot: 'weapon' });
   const t2 = monster({ attributes: ['vampyre2'] });
   const t3 = monster({ attributes: ['vampyre3'] });
   const t1 = monster({ attributes: ['vampyre1'] });
   const human = monster();
 
-  it('Blisterwood vs T2/T3: +25% dmg, +5% acc', () => {
-    expect(vampyreWeaponBonus(blisterwood, t2)).toEqual({ dmgMult: 1.25, accMult: 1.05 });
-    expect(vampyreWeaponBonus(blisterwood, t3)).toEqual({ dmgMult: 1.25, accMult: 1.05 });
+  it('Blisterwood flail: ×5/4 dmg, ×21/20 acc (any tier)', () => {
+    for (const m of [t1, t2, t3]) {
+      const r = vampyreWeaponBonus(flail, m, false);
+      expect(r.dmgFactors).toEqual([[5, 4]]);
+      expect(r.accMult).toBeCloseTo(21 / 20, 9);
+    }
   });
 
-  it('Blisterwood vs T1: identity', () => {
-    expect(vampyreWeaponBonus(blisterwood, t1)).toEqual({ dmgMult: 1, accMult: 1 });
+  it('Blisterwood sickle: ×23/20 dmg, ×21/20 acc', () => {
+    const r = vampyreWeaponBonus(sickle, t2, false);
+    expect(r.dmgFactors).toEqual([[23, 20]]);
+    expect(r.accMult).toBeCloseTo(21 / 20, 9);
   });
 
-  it('Ivandis flail only fires vs T2 (NOT T3)', () => {
-    expect(vampyreWeaponBonus(ivandis, t2)).toEqual({ dmgMult: 1.20, accMult: 1 });
-    expect(vampyreWeaponBonus(ivandis, t3)).toEqual({ dmgMult: 1, accMult: 1 });
+  it('Ivandis flail: ×6/5 dmg, no acc bonus (works on T3 too)', () => {
+    expect(vampyreWeaponBonus(ivandis, t2, false).dmgFactors).toEqual([[6, 5]]);
+    expect(vampyreWeaponBonus(ivandis, t3, false).dmgFactors).toEqual([[6, 5]]);
+    expect(vampyreWeaponBonus(ivandis, t2, false).accMult).toBe(1);
+  });
+
+  it('Rod of ivandis: ×11/10 dmg vs T1/T2, nothing vs T3', () => {
+    expect(vampyreWeaponBonus(rod, t1, false).dmgFactors).toEqual([[11, 10]]);
+    expect(vampyreWeaponBonus(rod, t2, false).dmgFactors).toEqual([[11, 10]]);
+    expect(vampyreWeaponBonus(rod, t3, false).dmgFactors).toEqual([]);
+  });
+
+  it('generic silver weapon: ×11/10 dmg vs T1 only', () => {
+    expect(vampyreWeaponBonus(silverlight, t1, false).dmgFactors).toEqual([[11, 10]]);
+    expect(vampyreWeaponBonus(silverlight, t2, false).dmgFactors).toEqual([]);
+  });
+
+  it("Efaritay's aid folds an ×11/10 factor ahead of the weapon factor", () => {
+    // Reference doEfaritay runs before scaleDamage in each branch.
+    expect(vampyreWeaponBonus(flail, t2, true).dmgFactors).toEqual([[11, 10], [5, 4]]);
+    // ...but only when the weapon deals uncapped damage.
+    expect(vampyreWeaponBonus(silverlight, t2, true).dmgFactors).toEqual([]);
   });
 
   it('identity vs non-vampyre', () => {
-    expect(vampyreWeaponBonus(blisterwood, human)).toEqual({ dmgMult: 1, accMult: 1 });
+    expect(vampyreWeaponBonus(flail, human, true)).toEqual({ dmgFactors: [], accMult: 1 });
   });
 });
 
-describe("efaritay's aid", () => {
+describe("efaritay's aid accuracy", () => {
   const efaritay = piece({ name: "Efaritay's aid", slot: 'ring' });
   const otherRing = piece({ name: 'Berserker ring', slot: 'ring' });
+  const silverlight = piece({ name: 'Silverlight', slot: 'weapon' });
+  const whip = piece({ name: 'Abyssal whip', slot: 'weapon' });
+  const t2 = monster({ attributes: ['vampyre2'] });
 
-  it('+10% acc vs vampyre when worn', () => {
-    expect(efaritayAccuracyBonus({ ring: efaritay }, monster({ attributes: ['vampyre2'] }))).toBeCloseTo(1.10, 6);
+  it('×23/20 acc vs vampyre with a silver weapon', () => {
+    expect(efaritayAccuracyBonus({ ring: efaritay, weapon: silverlight }, t2, 'melee')).toBeCloseTo(23 / 20, 9);
   });
 
-  it('identity vs non-vampyre', () => {
-    expect(efaritayAccuracyBonus({ ring: efaritay }, monster())).toBe(1);
+  it('no accuracy bonus without a silver weapon', () => {
+    // The reference gates the acc factor on isWearingSilverWeapon.
+    expect(efaritayAccuracyBonus({ ring: efaritay, weapon: whip }, t2, 'melee')).toBe(1);
   });
 
-  it('identity when not worn', () => {
-    expect(efaritayAccuracyBonus({ ring: otherRing }, monster({ attributes: ['vampyre2'] }))).toBe(1);
+  it('silver bolts count for ranged', () => {
+    const xbow = piece({ name: 'Rune crossbow', slot: 'weapon', category: 'Crossbow' });
+    const bolts = piece({ name: 'Silver bolts', slot: 'ammo' });
+    expect(efaritayAccuracyBonus({ ring: efaritay, weapon: xbow, ammo: bolts }, t2, 'ranged')).toBeCloseTo(23 / 20, 9);
+  });
+
+  it('identity vs non-vampyre and when not worn', () => {
+    expect(efaritayAccuracyBonus({ ring: efaritay, weapon: silverlight }, monster(), 'melee')).toBe(1);
+    expect(efaritayAccuracyBonus({ ring: otherRing, weapon: silverlight }, t2, 'melee')).toBe(1);
   });
 });
 

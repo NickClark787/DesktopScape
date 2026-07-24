@@ -137,6 +137,76 @@ describe('styleImmunityReason — attribute/weapon-class gates', () => {
   });
 });
 
+describe('styleImmunityReason — vampyres', () => {
+  const t1 = monster({ name: 'Juvinate', attributes: ['vampyre1'] });
+  const t2 = monster({ name: 'Vyrewatch', attributes: ['vampyre2'] });
+  const t3 = monster({ name: 'Vanstrom', attributes: ['vampyre3'] });
+  const flail = piece({ name: 'Blisterwood flail', slot: 'weapon' });
+  const silverlight = piece({ name: 'Silverlight', slot: 'weapon' });
+  const efaritay = piece({ name: "Efaritay's aid", slot: 'ring' });
+
+  it('T3 requires a blisterwood weapon', () => {
+    expect(styleImmunityReason(t3, { style: 'melee', weapon: whip, ammo: null, spell: null })).toBeTruthy();
+    expect(styleImmunityReason(t3, { style: 'melee', weapon: silverlight, ammo: null, spell: null })).toBeTruthy();
+    expect(styleImmunityReason(t3, { style: 'melee', weapon: flail, ammo: null, spell: null })).toBeNull();
+  });
+
+  it('Blisterwood staff bypasses T2/T3 immunity for magic (wiki extension)', () => {
+    const staff = piece({ name: 'Blisterwood staff', slot: 'weapon', category: 'Staff' });
+    expect(styleImmunityReason(t3, { style: 'magic', weapon: staff, ammo: null, spell: spellByName('Fire Surge') })).toBeNull();
+  });
+
+  it('T2 needs vampyrebane, silver, or Efaritay', () => {
+    expect(styleImmunityReason(t2, { style: 'melee', weapon: whip, ammo: null, spell: null })).toBeTruthy();
+    expect(styleImmunityReason(t2, { style: 'melee', weapon: silverlight, ammo: null, spell: null })).toBeNull();
+    expect(styleImmunityReason(t2, {
+      style: 'melee', weapon: whip, ammo: null, spell: null,
+      equipment: { weapon: whip, ring: efaritay },
+    })).toBeNull();
+  });
+
+  it('T1 takes damage from anything', () => {
+    expect(styleImmunityReason(t1, { style: 'melee', weapon: whip, ammo: null, spell: null })).toBeNull();
+  });
+});
+
+describe('calcDps integration — vampyres', () => {
+  const t2 = monster({ name: 'Vyrewatch', attributes: ['vampyre2'], skills: { atk: 1, def: 1, hp: 100, magic: 1, ranged: 1, str: 1 } });
+  const efaritay = piece({ name: "Efaritay's aid", slot: 'ring' });
+  const whipish = piece({ name: 'Abyssal whip', slot: 'weapon', category: 'Whip', offensive: { ...ZERO_STATS, slash: 82 }, bonuses: { str: 82, ranged_str: 0, magic_str: 0, prayer: 0 } });
+
+  it('non-silver weapon vs T2: zero without Efaritay, half damage with it', () => {
+    expect(calcDps(loadout({ equipment: { weapon: whipish } }), t2).dps).toBe(0);
+    const withAid = calcDps(loadout({ equipment: { weapon: whipish, ring: efaritay } }), t2);
+    // effStr 107, str bonus 82: base = floor(0.5 + 107*146/640) = 24 → halved = 12.
+    expect(withAid.maxHit).toBe(12);
+    expect(withAid.dps).toBeGreaterThan(0);
+  });
+
+  it('bare silver weapon vs T2: hits capped at 10 with capped expectation', () => {
+    const silverlight = piece({
+      name: 'Silverlight', slot: 'weapon', category: 'Slash Sword',
+      offensive: { ...ZERO_STATS, slash: 13 }, bonuses: { str: 12, ranged_str: 0, magic_str: 0, prayer: 0 },
+    });
+    const r = calcDps(loadout({ equipment: { weapon: silverlight } }), t2);
+    expect(r.maxHit).toBe(10);
+    // base max = floor(0.5 + 107*(12+64)/640) = floor(13.2) = 13, capped at 10.
+    // E[min(U(0..13),10)] = (55 + 3*10)/14 = 85/14; avg = acc × 6.0714…
+    const expectedAvg = r.accuracy * (85 / 14);
+    expect(r.avgHit).toBeCloseTo(expectedAvg, 6);
+  });
+
+  it('blisterwood flail + Efaritay stacks ×11/10 then ×5/4', () => {
+    const flail = piece({
+      name: 'Blisterwood flail', slot: 'weapon', category: 'Blunt',
+      offensive: { ...ZERO_STATS, crush: 60 }, bonuses: { str: 50, ranged_str: 0, magic_str: 0, prayer: 0 },
+    });
+    const r = calcDps(loadout({ attackStyle: 'crush', equipment: { weapon: flail, ring: efaritay } }), t2);
+    // base = floor(0.5 + 107*114/640) = floor(19.55) = 19 → ×11/10 = 20 → ×5/4 = 25.
+    expect(r.maxHit).toBe(25);
+  });
+});
+
 describe('calcDps integration', () => {
   it('Zulrah melee with a whip → 0 DPS; halberd hits', () => {
     const base = loadout({ equipment: { weapon: whip } });

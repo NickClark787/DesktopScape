@@ -11,6 +11,7 @@
 
 import type { CombatStyle, EquipmentPiece, Monster, PlayerLoadout, RaidScaling } from '@shared/types';
 import { ancientSpellElement, isBoltSpell, type Spell } from './spells';
+import { hasEfaritaysAid, isSilverWeapon, vampyreTier } from './immunities';
 
 const SCYTHE_NAMES = new Set([
   'Scythe of vitur',
@@ -438,54 +439,58 @@ export function colossalBladeBonus(
 // Vampyre weapons — Blisterwood / Ivandis / Efaritay's aid
 // -------------------------------------------------------------------------
 
-function vampyreTier(monster: Monster): 0 | 1 | 2 | 3 {
-  for (const a of monster.attributes || []) {
-    const lc = a.toLowerCase();
-    if (lc === 'vampyre1') return 1;
-    if (lc === 'vampyre2') return 2;
-    if (lc === 'vampyre3') return 3;
-  }
-  return 0;
+export interface VampyreBonus {
+  /** Successive ×num/den max-hit factors, each applied with Math.trunc —
+   *  mirrors the reference's per-transform truncation order. */
+  dmgFactors: Array<[number, number]>;
+  accMult: number;
 }
 
-const BLISTERWOOD_RE = /^Blisterwood (flail|sickle|staff)$/i;
+const NO_VAMPYRE_BONUS: VampyreBonus = { dmgFactors: [], accMult: 1 };
 
 /**
- * Vampyre-specific weapon bonuses vs tier 2/3 vampyres:
- *   - Blisterwood flail/sickle/staff: +25% damage, +5% accuracy (T2/T3).
- *   - Ivandis flail: +20% damage (T2 only).
- * Returns identity against non-vampyres or when the weapon doesn't qualify.
+ * Vampyrebane weapon bonuses vs vampyres, per the reference's tested model
+ * (PlayerVsNPCCalc:1782-1810 dmg, 283-285 acc):
+ *   - Blisterwood flail:  ×5/4 dmg, ×21/20 acc (any tier)
+ *   - Blisterwood sickle: ×23/20 dmg, ×21/20 acc (any tier)
+ *   - Ivandis flail:      ×6/5 dmg (any tier)
+ *   - Rod of ivandis:     ×11/10 dmg (T1/T2 only)
+ *   - other silver weapons: ×11/10 dmg (T1 only)
+ * Efaritay's aid multiplies damage by a further ×11/10, but ONLY alongside a
+ * weapon that deals uncapped damage (i.e. inside one of the branches above).
+ * Melee-only — calcDps calls this from the melee branch.
  */
 export function vampyreWeaponBonus(
   weapon: EquipmentPiece | null,
   monster: Monster,
-): { dmgMult: number; accMult: number } {
+  hasEfaritay: boolean,
+): VampyreBonus {
   const tier = vampyreTier(monster);
-  if (!weapon || tier === 0) return { dmgMult: 1, accMult: 1 };
-  if (BLISTERWOOD_RE.test(weapon.name) && tier >= 2) {
-    return { dmgMult: 1.25, accMult: 1.05 };
-  }
-  if (weapon.name === 'Ivandis flail' && tier === 2) {
-    return { dmgMult: 1.20, accMult: 1 };
-  }
-  return { dmgMult: 1, accMult: 1 };
+  if (!weapon || tier === 0) return NO_VAMPYRE_BONUS;
+  const efar: Array<[number, number]> = hasEfaritay ? [[11, 10]] : [];
+  if (weapon.name === 'Blisterwood flail') return { dmgFactors: [...efar, [5, 4]], accMult: 21 / 20 };
+  if (weapon.name === 'Blisterwood sickle') return { dmgFactors: [...efar, [23, 20]], accMult: 21 / 20 };
+  if (weapon.name === 'Ivandis flail') return { dmgFactors: [...efar, [6, 5]], accMult: 1 };
+  if (weapon.name === 'Rod of ivandis' && tier !== 3) return { dmgFactors: [...efar, [11, 10]], accMult: 1 };
+  if (tier === 1 && isSilverWeapon('melee', weapon, null)) return { dmgFactors: [...efar, [11, 10]], accMult: 1 };
+  return NO_VAMPYRE_BONUS;
 }
 
 /**
- * Efaritay's aid (worn in any slot that accepts it, typically ring) grants
- * +10% accuracy vs any tier of vampyre — stacks with vampyre weapons. No
- * damage effect.
+ * Efaritay's aid accuracy: ×23/20 vs vampyres, but ONLY while using a silver
+ * weapon (PlayerVsNPCCalc:286-288 — isWearingSilverWeapon && Efaritay). Its
+ * damage-side ×11/10 lives in `vampyreWeaponBonus`. Applies to any style via
+ * silver bolts for ranged.
  */
 export function efaritayAccuracyBonus(
   eq: PlayerLoadout['equipment'],
   monster: Monster,
+  style: CombatStyle,
 ): number {
   if (vampyreTier(monster) === 0) return 1;
-  // Efaritay's aid equips in unspecified slot; match by name across all slots.
-  for (const piece of Object.values(eq)) {
-    if (piece && piece.name === "Efaritay's aid") return 1.10;
-  }
-  return 1;
+  if (!hasEfaritaysAid(eq)) return 1;
+  if (!isSilverWeapon(style, eq.weapon ?? null, eq.ammo ?? null)) return 1;
+  return 23 / 20;
 }
 
 // -------------------------------------------------------------------------

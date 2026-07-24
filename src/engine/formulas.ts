@@ -29,7 +29,13 @@ import {
 } from './spells';
 import { applyRaidScalingDescribed } from './raidScaling';
 import { applyDefenceReductionDescribed } from './defenceReduction';
-import { styleImmunityReason } from './immunities';
+import {
+  hasEfaritaysAid,
+  isSilverWeapon,
+  styleImmunityReason,
+  vampyreTier,
+  wearingVampyrebane,
+} from './immunities';
 import {
   berserkerNeckBonus,
   boltProcName,
@@ -439,11 +445,20 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     maxHit += cbBonus;
     if (cbBonus > 0) effects.push({ name: 'Colossal blade', detail: `+${cbBonus} max hit (size ${monster.size})` });
 
-    // Vampyre weapons (Blisterwood / Ivandis flail) vs T2/T3 vampyres.
-    const vb = vampyreWeaponBonus(weapon, monster);
-    maxHit = Math.trunc(maxHit * vb.dmgMult);
-    attackRoll = Math.trunc(attackRoll * vb.accMult);
-    if (weapon) pushIfFired(effects, weapon.name, vb, 'vs vampyre');
+    // Vampyrebane weapons (Blisterwood / Ivandis / Rod / silver) vs vampyres.
+    // Efaritay's aid folds an extra ×11/10 damage factor in when the weapon
+    // deals uncapped damage; each factor truncates separately like the
+    // reference's chained transforms.
+    const vb = vampyreWeaponBonus(weapon, monster, hasEfaritaysAid(loadout.equipment));
+    if (vb.dmgFactors.length > 0 || vb.accMult !== 1) {
+      const before = maxHit;
+      for (const [num, den] of vb.dmgFactors) maxHit = Math.trunc((maxHit * num) / den);
+      attackRoll = Math.trunc(attackRoll * vb.accMult);
+      effects.push({
+        name: weapon!.name,
+        detail: `${before}→${maxHit} max hit${vb.accMult !== 1 ? `, ${pct(vb.accMult, true)} acc` : ''} vs vampyre`,
+      });
+    }
   } else if (style === 'ranged') {
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
@@ -672,10 +687,10 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   attackRoll = Math.trunc(attackRoll * wb.accMult);
   if (weapon) pushIfFired(effects, weapon.name, wb, '(wilderness)');
 
-  // Efaritay's aid — +10% acc vs vampyres (any tier), any style.
-  const efar = efaritayAccuracyBonus(loadout.equipment, monster);
+  // Efaritay's aid — ×23/20 acc vs vampyres, silver weapon required.
+  const efar = efaritayAccuracyBonus(loadout.equipment, monster, style);
   attackRoll = Math.trunc(attackRoll * efar);
-  if (efar !== 1) effects.push({ name: "Efaritay's aid", detail: `${pct(efar, true)} acc vs vampyre` });
+  if (efar !== 1) effects.push({ name: "Efaritay's aid", detail: `${pct(efar, true)} acc vs vampyre (silver weapon)` });
 
   // Target-type bonus (Salve amulet, Slayer helm (i), Black mask (i), Amulet of
   // avarice). RANGED only here — melee applies it early in its own block (so it
@@ -705,6 +720,7 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     : null;
   const immunityReason = styleImmunityReason(monster, {
     style, weapon, ammo: loadout.equipment.ammo ?? null, spell: immunitySpell,
+    equipment: loadout.equipment,
   });
   if (immunityReason) {
     maxHit = 0;
@@ -718,6 +734,21 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
     // Flying target reached with a halberd/salamander — surface why the
     // melee hit connects at all (the canonical "melee Kree'arra" setup).
     effects.push({ name: `${weapon.category} reach`, detail: `${monster.name} hit at 2-tile range` });
+  }
+
+  // Tier-2 vampyres take reduced damage from non-vampyrebane weapons that
+  // squeak past the immunity gate: Efaritay's aid → half damage; a bare
+  // silver weapon → every hit capped at 10 (reference applyNpcTransforms
+  // L2042-2048). `vampyreDamageCap` adjusts avgHit below, after it's known.
+  let vampyreDamageCap: number | null = null;
+  if (!immunityReason && vampyreTier(monster) === 2 && !wearingVampyrebane(2, style, weapon)) {
+    if (hasEfaritaysAid(loadout.equipment)) {
+      maxHit = Math.trunc(maxHit / 2);
+      effects.push({ name: "Efaritay's aid", detail: 'half damage vs tier-2 vampyre (non-vampyrebane weapon)' });
+    } else if (isSilverWeapon(style, weapon, loadout.equipment.ammo ?? null)) {
+      vampyreDamageCap = 10;
+      effects.push({ name: 'Silver weapon', detail: 'hits capped at 10 vs tier-2 vampyre' });
+    }
   }
 
   // Attack vs defence accuracy
@@ -762,6 +793,15 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
   const ammo = style === 'ranged' ? loadout.equipment.ammo ?? null : null;
   const specialAvg = specialAvgPerSwing(weapon, ammo, maxHit, accuracy, monster, sk.ranged);
   let avgHit = specialAvg ?? accuracy * (maxHit / 2);
+
+  // Silver-weapon cap vs tier-2 vampyres: each landed hit is min(roll, cap),
+  // so the expected damage is E[min(U(0..max), cap)] rather than max/2.
+  if (vampyreDamageCap !== null && maxHit > vampyreDamageCap) {
+    const c = vampyreDamageCap;
+    const expected = ((c * (c + 1)) / 2 + (maxHit - c) * c) / (maxHit + 1);
+    avgHit = accuracy * expected;
+    maxHit = c;
+  }
 
   if (specialAvg !== null) {
     if (isScythe(weapon)) {
