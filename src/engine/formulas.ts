@@ -460,6 +460,17 @@ export function calcDps(loadout: PlayerLoadout, monsterIn: Monster): CalcResult 
       });
     }
   } else if (style === 'ranged') {
+    // No weapon → no ranged attack. Without this gate the optimizer found
+    // phantom "unarmed archer" builds: bolts in the ammo slot still summed
+    // their ranged_str, and the default 4-tick speed out-paced real bows.
+    if (!weapon) {
+      return {
+        maxHit: 0, accuracy: 0, dps: 0, avgHit: 0,
+        weaponSpeedTicks: eq.weaponSpeed, ttkSeconds: Infinity,
+        details: { effectiveAttack: 0, effectiveStrength: 0, attackRoll: 0, defenceRoll: 0 },
+        effects: [...effects, { name: 'Unarmed', detail: 'ranged requires a weapon' }],
+      };
+    }
     effectiveAttack = Math.floor(sk.ranged * pr.ranged) + stance.ranged + 8;
     effectiveStrength = Math.floor(sk.ranged * pr.rangedStr) + stance.ranged + 8;
     // Void Knight / Elite Void (ranger helm): the wiki calc scales the effective

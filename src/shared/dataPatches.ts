@@ -49,6 +49,21 @@ const EQUIPMENT_PATCHES: EquipmentPatch[] = [
     name: 'Field arrow',
     apply: (p) => { p.bonuses.ranged_str = 0; p.offensive.ranged = 0; },
   },
+  // ---------------------------------------------------------------------
+  // Castle Wars supply ammo — free minigame-only projectiles that cannot
+  // leave the arena, yet upstream ships them with real combat stats
+  // (bolts +122 ranged_str = dragon-bolt tier, arrows +60 = dragon-arrow
+  // tier). Same failure mode as the training arrows above: the optimizer
+  // recommends ammo no player can actually bring to a fight.
+  // ---------------------------------------------------------------------
+  {
+    name: 'Castle wars arrow',
+    apply: (p) => { p.bonuses.ranged_str = 0; p.offensive.ranged = 0; },
+  },
+  {
+    name: 'Castle wars bolts',
+    apply: (p) => { p.bonuses.ranged_str = 0; p.offensive.ranged = 0; },
+  },
 ];
 
 /**

@@ -45,6 +45,20 @@ describe('patchEquipmentData', () => {
     expect(eq[4].bonuses.ranged_str).toBe(60);
   });
 
+  it('zeroes the Castle Wars supply ammo (minigame-only projectiles)', () => {
+    // "Castle wars bolts" ship with +122 ranged_str (dragon-bolt tier) and
+    // the arrows with +60, but neither can leave the minigame arena.
+    const eq = [
+      piece('Castle wars bolts', 122, 0),
+      piece('Castle wars arrow', 60, 0),
+      piece('Dragon bolts', 122, 0), // control: real bolts untouched
+    ];
+    patchEquipmentData(eq);
+    expect(eq[0].bonuses.ranged_str).toBe(0);
+    expect(eq[1].bonuses.ranged_str).toBe(0);
+    expect(eq[2].bonuses.ranged_str).toBe(122);
+  });
+
   it('leaves unaffected pieces alone', () => {
     const dragon = piece('Dragon arrow', 60, 0);
     const tbow: EquipmentPiece = { ...piece('Twisted bow', 20, 70), slot: 'weapon', category: 'Bow', isTwoHanded: true };

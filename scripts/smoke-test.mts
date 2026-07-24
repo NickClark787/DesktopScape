@@ -1,8 +1,13 @@
 import { readFile } from 'node:fs/promises';
 import { findBestSetup, findBestMeleeSetup, findBestMagicSetup } from '../src/engine/bestSetup.ts';
+import { patchEquipmentData } from '../src/shared/dataPatches.ts';
 import type { Monster, EquipmentPiece, PlayerLoadout, CombatStyle } from '../src/shared/types.ts';
 
 const equipment: EquipmentPiece[] = JSON.parse(await readFile('resources/data/equipment.json', 'utf8'));
+// Mirror the app: main/index.ts patches known-bad upstream entries before the
+// renderer ever sees them. Without this the smoke test optimizes over raw
+// data and picks patched-out items (e.g. Barbed arrow's phantom +125).
+patchEquipmentData(equipment);
 const monsters: Monster[] = JSON.parse(await readFile('resources/data/monsters.json', 'utf8'));
 
 const target: Monster = monsters.find((m) => m.name === 'Vorkath' && (m.version || '').includes('Post'))

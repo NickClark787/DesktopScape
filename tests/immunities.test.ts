@@ -252,4 +252,15 @@ describe('calcDps integration', () => {
     const r = calcDps(loadout({ equipment: { weapon: whip } }), zulrah);
     expect(r.effects.some((e) => e.name === 'Immune target')).toBe(true);
   });
+
+  it('unarmed ranged deals nothing — ammo alone is not a weapon', () => {
+    // Regression: the optimizer used to find "unarmed archer" builds where
+    // bolts in the ammo slot supplied ranged_str and the default 4-tick
+    // speed beat real bows.
+    const bolts = piece({ name: 'Dragon bolts', slot: 'ammo', bonuses: { str: 0, ranged_str: 122, magic_str: 0, prayer: 0 } });
+    const r = calcDps(loadout({ style: 'ranged', attackStyle: 'ranged', equipment: { ammo: bolts } }), monster());
+    expect(r.dps).toBe(0);
+    expect(r.maxHit).toBe(0);
+    expect(r.effects.some((e) => e.name === 'Unarmed')).toBe(true);
+  });
 });
