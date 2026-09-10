@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { BestSetupCandidate, CombatStyle, EquipmentSlot, Monster, PlayerLoadout } from '@shared/types';
 import { GearGrid } from './GearGrid';
-import { GearIcon } from './GearIcon';
 import { MonsterIcon } from './MonsterIcon';
+import { EquipmentTotals } from './EquipmentTotals';
 import { StatOrb } from './StatOrb';
 import { useCountUp } from '../hooks/useCountUp';
 import { formatGp } from '../utils/gp';
@@ -104,8 +104,10 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
   // Always render the grid using `loadout.equipment`. When a candidate exists,
   // its equipment was already pushed into the store via App.runOptimizer →
   // state.setEquipment, so the two stay in sync.
-  const pieces = Object.values(loadout.equipment).filter(Boolean);
   const result = candidate?.result ?? null;
+  // The style whose offence/defence axis the totals table highlights. Mirrors
+  // the hero block, so the table calls out the same style the payoff number does.
+  const activeStyle = candidate?.style ?? loadout.style;
 
   return (
     <div className="panel flex-1 flex flex-col">
@@ -202,23 +204,7 @@ export function ResultsPanel({ candidate, loadout, target, computing, onSlotClic
           </div>
         </>
       )}
-      {pieces.length > 0 && (
-        <>
-          <div className="panel-heading mt-auto">Pieces ({pieces.length})</div>
-          <div className="p-3 flex flex-wrap gap-2">
-            {pieces.map((p) => p && (
-              <span
-                key={`${p.slot}-${p.id}`}
-                className="text-xs px-2 py-1 rounded bg-bg-raised border border-border flex items-center gap-1.5"
-              >
-                <GearIcon piece={p} size="sm" />
-                <span className="text-text-faint">{p.slot}:</span>
-                <span>{p.name}</span>
-              </span>
-            ))}
-          </div>
-        </>
-      )}
+      <EquipmentTotals equipment={loadout.equipment} activeStyle={activeStyle} />
     </div>
   );
 }

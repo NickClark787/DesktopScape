@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from './state/store';
 import { MonsterPicker } from './components/MonsterPicker';
+import { MonsterStatsPanel } from './components/MonsterStatsPanel';
 import { StyleTabs } from './components/StyleTabs';
 import { StatsPanel } from './components/StatsPanel';
 import { PrayerPanel } from './components/PrayerPanel';
@@ -436,6 +437,7 @@ export default function App() {
               selected={selectedMonster}
               onSelect={handleMonsterSelect}
             />
+            <MonsterStatsPanel monster={selectedMonster} activeStyle={state.style} />
             <RaidPanel
               value={state.loadout.raidScaling}
               onChange={state.setRaidScaling}
