@@ -1,4 +1,4 @@
-# GearScape Desktop
+# DesktopScape
 
 Desktop best-in-slot / DPS calculator for Old School RuneScape, inspired by
 [gearscape.net](https://gearscape.net) and [tools.runescape.wiki/osrs-dps](https://tools.runescape.wiki/osrs-dps/).
@@ -19,7 +19,7 @@ Builds a Windows installer:
 npm run dist:win
 ```
 
-Output: `release/GearScape Desktop-<version>-x64.exe`
+Output: `release/DesktopScape-<version>-x64.exe`
 
 ## Data
 

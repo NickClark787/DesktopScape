@@ -121,7 +121,7 @@ const VERSION = 1;
 /** Each tab keeps its own settings — the Inferno and the Colosseum have
  *  very different scenes, so a tier that suits one need not suit the other. */
 export function graphicsKey(tab: string): string {
-  return `gearscape:${tab}:graphics`;
+  return `desktopscape:${tab}:graphics`;
 }
 
 export function loadGraphics(key: string): GraphicsOptions {

@@ -31,7 +31,7 @@ export const DEFAULT_KEYMAP: Record<KeyAction, string> = {
   pauseResume: ' ', tickStep: '.', speedUp: '=', speedDown: '-',
 };
 
-const KEY_STORE = 'gearscape:colosseum:keys';
+const KEY_STORE = 'desktopscape:colosseum:keys';
 const KEY_VERSION = 1;
 
 export function loadKeymap(): Record<KeyAction, string> {

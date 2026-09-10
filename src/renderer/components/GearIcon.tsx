@@ -42,7 +42,7 @@ interface Props {
 export function GearIcon({ piece, size = 'sm', title, className }: Props) {
   if (!piece) return null;
   const label = title ?? pieceTooltip(piece);
-  const src = window.gearscape.cdnImage(piece.image, 'equipment');
+  const src = window.desktopscape.cdnImage(piece.image, 'equipment');
 
   // Skip the network round-trip + visible torn-icon flash for URLs we've
   // already seen 404 in this session. We render a same-sized invisible

@@ -37,8 +37,8 @@ export interface LoadoutSnapshot {
   attackStyleOverride: MeleeAttackType | null;
 }
 
-const OWNED_LS_KEY = 'gearscape:ownedIds';
-const OWNED_FILTER_LS_KEY = 'gearscape:ownedFilterEnabled';
+const OWNED_LS_KEY = 'desktopscape:ownedIds';
+const OWNED_FILTER_LS_KEY = 'desktopscape:ownedFilterEnabled';
 
 function loadOwnedIds(): Set<number> {
   if (typeof window === 'undefined') return new Set();
@@ -62,8 +62,8 @@ function saveOwnedFilterEnabled(v: boolean): void {
   try { window.localStorage.setItem(OWNED_FILTER_LS_KEY, v ? '1' : '0'); } catch { /* ignore */ }
 }
 
-const EXCLUDED_LS_KEY = 'gearscape:excludedIds';
-const BUDGET_LS_KEY = 'gearscape:budget';
+const EXCLUDED_LS_KEY = 'desktopscape:excludedIds';
+const BUDGET_LS_KEY = 'desktopscape:budget';
 
 function loadExcludedIds(): Set<number> {
   if (typeof window === 'undefined') return new Set();
@@ -92,8 +92,8 @@ function saveBudget(v: number | null): void {
   } catch { /* ignore */ }
 }
 
-const PRICES_LS_KEY = 'gearscape:prices';
-const PRICES_AT_LS_KEY = 'gearscape:pricesUpdatedAt';
+const PRICES_LS_KEY = 'desktopscape:prices';
+const PRICES_AT_LS_KEY = 'desktopscape:pricesUpdatedAt';
 
 /** Collapse the API's high/low pair into one usable GE price estimate. */
 function estimatePrice(entry: { high: number | null; low: number | null }): number | null {
@@ -123,7 +123,7 @@ function savePrices(map: Map<number, number>, at: number): void {
   } catch { /* ignore quota */ }
 }
 
-const LOADOUTS_LS_KEY = 'gearscape:loadouts';
+const LOADOUTS_LS_KEY = 'desktopscape:loadouts';
 
 function loadSavedLoadouts(): Record<string, LoadoutSnapshot> {
   if (typeof window === 'undefined') return {};
@@ -293,7 +293,7 @@ export const useApp = create<AppState>((set) => ({
   fetchPrices: async () => {
     set({ loadingPrices: true });
     try {
-      const { prices } = await window.gearscape.fetchPrices();
+      const { prices } = await window.desktopscape.fetchPrices();
       const map = new Map<number, number>();
       for (const [id, entry] of Object.entries(prices)) {
         const est = estimatePrice(entry);

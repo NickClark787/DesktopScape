@@ -88,7 +88,7 @@ function createWindow() {
     // Matches the renderer theme's bg (tailwind `bg` / body background) so
     // the pre-paint window doesn't flash the old blue-gray before React loads.
     backgroundColor: '#1a130d',
-    title: 'GearScape Desktop',
+    title: 'DesktopScape',
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.mjs'),
@@ -174,7 +174,7 @@ app.whenReady().then(() => {
 }).catch((err: unknown) => {
   // whenReady only rejects if Electron fails to initialize — nothing to
   // recover; log so packaged-app failures aren't silent.
-  console.error('[gearscape] app failed to start:', err);
+  console.error('[desktopscape] app failed to start:', err);
 });
 
 app.on('window-all-closed', () => {

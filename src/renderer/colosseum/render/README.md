@@ -20,7 +20,7 @@ to resemble the real model. Fidelity here means *mechanical and
 positional* accuracy: tile positions, hazard shapes and telegraph timing
 are exact, the appearance is our own.
 
-Gear and item icons elsewhere in GearScape are unchanged; this module
+Gear and item icons elsewhere in DesktopScape are unchanged; this module
 adds none.
 
 ## Why the engine grew a bigger snapshot

@@ -74,7 +74,7 @@ function monsterTooltip(m: Monster): string {
 export function MonsterIcon({ monster, size = 'sm', title, className }: Props) {
   if (!monster) return null;
   const label = title ?? monsterTooltip(monster);
-  const src = window.gearscape.cdnImage(monster.image, 'monsters');
+  const src = window.desktopscape.cdnImage(monster.image, 'monsters');
 
   // Same denylist trick as GearIcon — render an invisible placeholder of the
   // expected size so layout doesn't shift when the CDN is missing the sprite.

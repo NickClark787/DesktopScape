@@ -7,7 +7,7 @@
  *
  * Equipment/monster IDs match 1:1 between the two projects' bundled data
  * (verified: 5268/5268 equipment identical, monster data identical for every
- * monster used here), so a mismatch indicates a GearScape ENGINE discrepancy,
+ * monster used here), so a mismatch indicates a DesktopScape ENGINE discrepancy,
  * not a data-version difference.
  *
  * Phase 1 locks in max hit (all styles) and the attack roll (BasicRolls) by
@@ -53,7 +53,7 @@ import type {
   WeaponStance,
 } from '@shared/types';
 
-// ---------- Load GearScape's bundled wiki data ----------
+// ---------- Load DesktopScape's bundled wiki data ----------
 
 const DATA = resolve(process.cwd(), 'resources/data');
 const equipment: EquipmentPiece[] = JSON.parse(readFileSync(resolve(DATA, 'equipment.json'), 'utf8'));
@@ -519,7 +519,7 @@ afterAll(() => {
   lines.push('='.repeat(120));
   lines.push('DPS ENGINE CROSS-CHECK vs official OSRS wiki calculator (weirdgloop/osrs-dps-calc)');
   lines.push('='.repeat(120));
-  lines.push(`${pad('Style', 7)} ${pad('Scenario', 46)} ${pad('Metric', 10)} ${padL('GearScape', 11)} ${padL('Correct', 9)} ${padL('Δ', 7)}  Status`);
+  lines.push(`${pad('Style', 7)} ${pad('Scenario', 46)} ${pad('Metric', 10)} ${padL('DesktopScape', 13)} ${padL('Correct', 9)} ${padL('Δ', 7)}  Status`);
   lines.push('-'.repeat(120));
   let fails = 0;
   for (const c of CHECKS) {
@@ -527,7 +527,7 @@ afterAll(() => {
     const ok = delta === 0;
     if (!ok) fails++;
     lines.push(
-      `${pad(c.row.s.style, 7)} ${pad(c.row.s.label.slice(0, 46), 46)} ${pad(c.metric, 10)} ${padL(c.gs, 11)} ${padL(c.exp, 9)} ${padL(delta > 0 ? `+${delta}` : delta, 7)}  ${ok ? 'OK' : 'FAIL'}`,
+      `${pad(c.row.s.style, 7)} ${pad(c.row.s.label.slice(0, 46), 46)} ${pad(c.metric, 10)} ${padL(c.gs, 13)} ${padL(c.exp, 9)} ${padL(delta > 0 ? `+${delta}` : delta, 7)}  ${ok ? 'OK' : 'FAIL'}`,
     );
   }
   lines.push('-'.repeat(120));
@@ -540,7 +540,7 @@ afterAll(() => {
   lines.push('='.repeat(120));
   lines.push('PHASE 2: DPS FROM FIRST PRINCIPLES (defence roll + hit chance + expected damage + DPS, independent of engine internals)');
   lines.push('='.repeat(120));
-  lines.push(`${pad('Scenario', 58)} ${pad('Metric', 11)} ${padL('GearScape', 13)} ${padL('Derived', 13)} ${padL('Δ', 11)}  Status`);
+  lines.push(`${pad('Scenario', 58)} ${pad('Metric', 11)} ${padL('DesktopScape', 13)} ${padL('Derived', 13)} ${padL('Δ', 11)}  Status`);
   lines.push('-'.repeat(120));
   let fp2Fails = 0;
   const fpMetric = (label: string, gs: number, exp: number, dp: number, exact: boolean) => {
@@ -566,7 +566,7 @@ afterAll(() => {
   lines.push('='.repeat(120));
   lines.push('PHASE 3: RANGED FROM FIRST PRINCIPLES (max hit / attack roll / defence / accuracy / avg dmg / DPS vs reference-faithful transcription)');
   lines.push('='.repeat(120));
-  lines.push(`${pad('Scenario', 52)} ${pad('Metric', 9)} ${padL('GearScape', 13)} ${padL('Reference', 13)} ${padL('Δ', 11)}  Status`);
+  lines.push(`${pad('Scenario', 52)} ${pad('Metric', 9)} ${padL('DesktopScape', 13)} ${padL('Reference', 13)} ${padL('Δ', 11)}  Status`);
   lines.push('-'.repeat(120));
   let p3Fails = 0;
   const p3Metric = (label: string, gs: number, exp: number, dp: number, exact: boolean) => {

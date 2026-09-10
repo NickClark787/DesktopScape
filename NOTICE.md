@@ -1,6 +1,6 @@
 # Third-party attribution
 
-GearScape Desktop is released under the GNU General Public License v3.0 (or later). See `LICENSE`.
+DesktopScape is released under the GNU General Public License v3.0 (or later). See `LICENSE`.
 
 ## Combat formulas and reference implementation
 
@@ -11,7 +11,7 @@ open-source OSRS DPS calculator maintained by **Weird Gloop**:
 - https://github.com/weirdgloop/osrs-dps-calc (GPL-3.0)
 - https://tools.runescape.wiki/osrs-dps/
 
-Because this project links to / derives from a GPL-3.0 codebase, GearScape Desktop
+Because this project links to / derives from a GPL-3.0 codebase, DesktopScape
 is itself distributed under the GPL-3.0 license.
 
 ## Game data

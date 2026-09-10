@@ -1,8 +1,8 @@
-import type { GearscapeApi } from '../preload/index';
+import type { DesktopScapeApi } from '../preload/index';
 
 declare global {
   interface Window {
-    gearscape: GearscapeApi;
+    desktopscape: DesktopScapeApi;
   }
 }
 

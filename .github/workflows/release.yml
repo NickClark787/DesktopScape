@@ -60,7 +60,7 @@ jobs:
       - name: Upload installer artifact (always, for inspection)
         uses: actions/upload-artifact@v4
         with:
-          name: GearScape-Desktop-Windows-x64
+          name: DesktopScape-Windows-x64
           path: |
             release/*.exe
             release/*.exe.blockmap

@@ -98,7 +98,7 @@ Gear entries are item **names** resolved against the live equipment
 database at load time (unknown names warn and are skipped). Inventory
 `item` ids come from `CONSUMABLES` in `constants.ts`. Presets are read-only
 in the UI — saving forks them into a versioned-localStorage profile
-(`renderer/inferno/profiles.ts`, key `gearscape:inferno:profiles`).
+(`renderer/inferno/profiles.ts`, key `desktopscape:inferno:profiles`).
 
 ## Known simplifications (documented in code)
 

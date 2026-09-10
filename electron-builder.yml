@@ -1,5 +1,5 @@
-appId: org.gearscape.desktop
-productName: GearScape Desktop
+appId: org.desktopscape.app
+productName: DesktopScape
 directories:
   output: release
   buildResources: resources
@@ -24,4 +24,4 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  shortcutName: GearScape Desktop
+  shortcutName: DesktopScape

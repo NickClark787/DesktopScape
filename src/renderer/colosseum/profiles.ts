@@ -8,7 +8,7 @@ import type { AssistOptions, BossOptions, InventorySlot, LatencyConfig } from '@
 
 type Slot = Exclude<EquipmentSlot, '2h'>;
 
-const STORE_KEY = 'gearscape:colosseum:profiles';
+const STORE_KEY = 'desktopscape:colosseum:profiles';
 const STORE_VERSION = 1;
 
 export interface ColosseumProfile {

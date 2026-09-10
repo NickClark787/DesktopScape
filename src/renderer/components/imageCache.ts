@@ -24,6 +24,6 @@ export function markFailedImage(url: string): void {
   if (!failedUrls.has(url)) {
     failedUrls.add(url);
     // eslint-disable-next-line no-console
-    console.warn('[gearscape] CDN image failed to load:', url);
+    console.warn('[desktopscape] CDN image failed to load:', url);
   }
 }

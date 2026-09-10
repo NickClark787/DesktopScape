@@ -62,7 +62,7 @@ export default function App() {
   async function loadData() {
     setLoadError('');
     try {
-      const data = await window.gearscape.loadData();
+      const data = await window.desktopscape.loadData();
       state.hydrate(data);
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e));
@@ -371,8 +371,8 @@ export default function App() {
     setRefreshing(true);
     setNotice('');
     try {
-      await window.gearscape.refreshData();
-      const data = await window.gearscape.loadData();
+      await window.desktopscape.refreshData();
+      const data = await window.desktopscape.loadData();
       state.hydrate(data);
       setNotice('Data refreshed from OSRS Wiki CDN.');
     } catch (e) {
@@ -392,7 +392,7 @@ export default function App() {
             className="text-4xl font-bold font-display tracking-wide animate-glow-pulse"
             style={{ textShadow: '0 0 26px rgba(255, 215, 0, 0.35)' }}
           >
-            <span className="text-accent">Gear</span>Scape
+            <span className="text-accent">Desktop</span>Scape
           </h1>
           {loadError ? (
             <div className="flex flex-col items-center gap-3 max-w-md text-center">
@@ -596,7 +596,7 @@ function Header({
           className="text-2xl font-bold font-display tracking-wide"
           style={{ textShadow: '0 0 18px rgba(255, 215, 0, 0.28)' }}
         >
-          <span className="text-accent">Gear</span>Scape
+          <span className="text-accent">Desktop</span>Scape
         </h1>
         {/* Top-level view tabs. */}
         <nav className="inline-flex gap-1 bg-bg border border-border rounded-lg p-1 ml-2">

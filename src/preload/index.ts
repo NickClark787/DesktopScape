@@ -35,6 +35,6 @@ const api = {
     `${CDN_BASE}${kind}/${encodeURIComponent(filename)}`,
 };
 
-contextBridge.exposeInMainWorld('gearscape', api);
+contextBridge.exposeInMainWorld('desktopscape', api);
 
-export type GearscapeApi = typeof api;
+export type DesktopScapeApi = typeof api;
