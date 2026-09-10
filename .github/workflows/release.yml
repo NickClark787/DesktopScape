@@ -9,10 +9,22 @@
 #   git push origin v0.1.0
 #
 # The runner is windows-latest because electron-builder's NSIS target needs
-# native Windows tooling. Note: the winCodeSign symlink quirk we hit locally
-# (cannot create symlinks without Developer Mode) does NOT affect GitHub
-# Actions runners — they ship with the necessary admin context for 7z to
-# create symlinks.
+# native Windows tooling.
+#
+# The winCodeSign symlink quirk DOES affect GitHub Actions runners — an
+# earlier version of this comment claimed otherwise, and the v0.1.0 tag
+# failed on exactly that. electron-builder fetches the winCodeSign bundle
+# during signApp; the archive carries macOS symlinks
+# (darwin/10.12/lib/libcrypto.dylib and libssl.dylib), and extracting a
+# symlink on Windows needs SeCreateSymbolicLinkPrivilege, which the runner
+# account does not hold by default:
+#
+#   ERROR: Cannot create symbolic link : A required privilege is not held
+#          by the client
+#
+# The "Allow unprivileged symlink creation" step below grants it via the
+# Developer Mode registry flag before the build runs. Runners are
+# administrators, so the write succeeds.
 
 name: Release
 
@@ -51,20 +63,36 @@ jobs:
       - name: Reference-loadout validator
         run: npx tsx --tsconfig scripts/tsconfig.json scripts/validate-bis.mts
 
+      # electron-builder's winCodeSign bundle contains macOS symlinks, and
+      # 7za cannot unpack them without SeCreateSymbolicLinkPrivilege. The
+      # Developer Mode flag grants it process-wide. See the header comment.
+      - name: Allow unprivileged symlink creation (winCodeSign extraction)
+        shell: pwsh
+        run: |
+          New-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" -Force | Out-Null
+          Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock" `
+            -Name "AllowDevelopmentWithoutDevLicense" -Value 1 -Type DWord
+          Write-Host "Developer Mode enabled for symlink extraction."
+
       - name: Build app + Windows installer
         # electron-vite build is included in `dist:win`; run it directly so
         # any bundling failure surfaces clearly instead of buried in the
         # electron-builder logs.
         run: npm run dist:win
 
+      # Named "always" but had no `if:`, so it was skipped on the one run
+      # where inspection actually mattered. Uploads whatever exists even
+      # when the build failed; a missing exe is then a warning, not a
+      # second failure stacked on the first.
       - name: Upload installer artifact (always, for inspection)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: DesktopScape-Windows-x64
           path: |
             release/*.exe
             release/*.exe.blockmap
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Create GitHub Release with installer
         uses: softprops/action-gh-release@v2
