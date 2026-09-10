@@ -28,3 +28,14 @@ names, and monster data are © Jagex Ltd.
 Equipment and monster icons are loaded on demand from
 `https://tools.runescape.wiki/osrs-dps/cdn/` and are sourced from the OSRS Wiki
 (CC BY-NC-SA 3.0).
+
+## Fonts
+
+Two typefaces are bundled and redistributed under `src/renderer/assets/fonts/`,
+each under the SIL Open Font License 1.1. The full license text ships alongside
+each font file:
+
+- **Cinzel** by Natanael Gama — `Cinzel-OFL.txt`
+- **Pixelify Sans** by Stefie Justprince — `PixelifySans-OFL.txt`
+
+No Jagex/OSRS typeface is bundled, traced, or reproduced.

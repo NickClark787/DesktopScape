@@ -86,7 +86,9 @@ export function EquipmentTotals({ equipment, activeStyle }: Props) {
   return (
     <>
       <div className="panel-heading mt-auto">Equipment totals</div>
-      <div className="p-3">
+      {/* Capped: the results panel runs the full window width, and an
+          unbounded grid strands each number far from its row label. */}
+      <div className="p-3 max-w-3xl">
         <div className="grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-x-3 gap-y-1 text-xs">
           {/* Header row — column labels keyed to combat-style names */}
           <span />
@@ -158,7 +160,12 @@ function Bonus({
   active?: boolean;
   rawSign?: boolean;
 }) {
-  const display = rawSign ? `${value}${suffix}` : `${s(value)}${suffix}`;
+  // Weight sums floats (0.453 + 2.267 + …), so print it rounded — otherwise
+  // binary error surfaces as "12.498000000000001 kg". Number() drops the
+  // trailing zeros toFixed leaves behind, so 12.5 stays 12.5, not 12.50.
+  const display = rawSign
+    ? `${Number(value.toFixed(2))}${suffix}`
+    : `${s(value)}${suffix}`;
   return (
     <div
       className={[

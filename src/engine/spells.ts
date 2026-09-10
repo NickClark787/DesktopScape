@@ -3,7 +3,7 @@
  * (GPL-3.0), simplified to the pieces we need for best-setup optimization.
  */
 
-import spellsJson from '@data/spells.json' assert { type: 'json' };
+import spellsJson from '@data/spells.json';
 import type { EquipmentPiece } from '@shared/types';
 
 export type Spellbook = 'standard' | 'ancient' | 'lunar' | 'arceuus';
