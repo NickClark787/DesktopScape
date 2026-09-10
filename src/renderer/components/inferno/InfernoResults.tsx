@@ -9,10 +9,16 @@ import { CONSUMABLE_INDEX } from '@sim/tzkalZuk/constants';
 
 const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
 const KIND_LABEL: Record<EntityKind, string> = {
-  zuk: 'Zuk', ranger: 'Jal-Xil', mager: 'Jal-Zek', jad: 'Jad', healer: 'Jal-MejJak',
+  zuk: 'Zuk', ranger: 'Jal-Xil', mager: 'Jal-Zek', jad: 'Jad',
+  healer: 'Jal-MejJak', jadHealer: 'Yt-HurKot',
 };
 
-export function InfernoResults({ results }: { results: ResultsSummary }) {
+export function InfernoResults({ results, visualAids = [] }: {
+  results: ResultsSummary;
+  /** Render-side readability aids that were on. Not engine assists, but
+   *  still listed so a "clean" attempt is honestly clean. */
+  visualAids?: string[];
+}) {
   const r = results;
   const outcomeText = r.outcome === 'kill' ? 'TzKal-Zuk defeated — Infernal cape!'
     : r.outcome === 'death' ? 'You died' : r.outcome === 'timeout' ? 'Time expired' : 'Run aborted';
@@ -22,7 +28,14 @@ export function InfernoResults({ results }: { results: ResultsSummary }) {
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>Results</span>
-        {r.assistsUsed && <span className="panel-heading-meta text-accent" title="Assists were enabled during this run">assists on</span>}
+        <span className="flex items-center gap-2">
+          {r.assistsUsed && <span className="panel-heading-meta text-accent" title="Assists were enabled during this run">assists on</span>}
+          {visualAids.length > 0 && (
+            <span className="panel-heading-meta" title={`Visual aids on: ${visualAids.join(', ')}`}>
+              {visualAids.length} visual aid{visualAids.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </span>
       </div>
       <div className="p-4 flex flex-col gap-3 text-sm">
         <div className="flex items-baseline justify-between">
@@ -38,7 +51,10 @@ export function InfernoResults({ results }: { results: ResultsSummary }) {
           <span className="text-text-dim">Prayer switches</span>
           <span className="text-right">{r.prayerSwitches.correct}/{r.prayerSwitches.total} blocked ({pct(r.prayerSwitches.correct, r.prayerSwitches.total)})</span>
           <span className="text-text-dim">Glyph</span>
-          <span className="text-right">{r.glyphDestroyed ? <span className="text-osrs-red">destroyed</span> : `${r.glyphHpLeft} HP left`}</span>
+          <span className="text-right">
+            {r.glyphDestroyed ? <span className="text-osrs-red">destroyed</span> : `${r.glyphHpLeft} HP left`}
+            {r.glyphDamageTaken > 0 && <span className="text-text-faint"> · {r.glyphDamageTaken} taken from spawns</span>}
+          </span>
           <span className="text-text-dim">Zuk healed</span>
           <span className="text-right">{r.zukHealed > 0 ? <span className="text-osrs-red">+{r.zukHealed}</span> : '0'}</span>
         </div>

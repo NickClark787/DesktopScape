@@ -1,9 +1,14 @@
 /**
  * Inferno tab: TzKal-Zuk (wave 69) simulator. Owns configuration + the sim
  * lifecycle; the engine (sim/tzkalZuk) is headless and this layer only feeds
- * inputs and reads snapshots. Same render/perf discipline as the Colosseum
- * tab: one canvas redrawn per sim tick, a capped rAF loop that stops when
- * paused / finished / document.hidden, static-DOM HUD.
+ * inputs and reads snapshots.
+ *
+ * Tick/frame split, identical to the Colosseum tab: this component owns
+ * the fixed-timestep accumulator (`host.step`) and the renderer owns the
+ * frame loop. The engine is never advanced once per frame — `step`
+ * converts wall time into whole 0.6 s ticks and the renderer interpolates
+ * between the last two states. Paused, finished, hidden or scrolled away,
+ * the loop is cancelled outright; a single still frame is drawn on demand.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, PlayerSkills } from '@shared/types';
@@ -13,7 +18,7 @@ import { summarize } from '@sim/tzkalZuk/results';
 import { CONSUMABLE_INDEX, TICK_MS } from '@sim/tzkalZuk/constants';
 import type {
   AssistOptions, BossOptions, EntityKind, InputCommand, InventorySlot, LatencyConfig,
-  Overhead, ReplayFile, ResultsSummary, SimConfig,
+  Overhead, ReplayFile, ResultsSummary, SimConfig, SimEvent, SimSnapshot,
 } from '@sim/tzkalZuk/types';
 import { applySlotChange } from '../../utils/equipment';
 import { actionForKey, loadKeymap, type KeyAction } from '../../inferno/keymap';
@@ -22,7 +27,13 @@ import {
   deleteProfile, duplicateProfile, exportProfile, importProfile, loadProfiles,
   renameProfile, resolveProfileGear, saveProfile, type InfernoProfile,
 } from '../../inferno/profiles';
-import { ZukArenaCanvas } from './ZukArenaCanvas';
+import {
+  graphicsKey, loadGraphics, saveGraphics, visualAidsInUse, type QualityTier,
+} from '../../arena/options';
+import type { SimHost } from '../../arena/renderer';
+import { InfernoRenderer } from '../../inferno/render/renderer';
+import { ArenaStage } from '../arena/ArenaStage';
+import { GraphicsPanel } from '../arena/GraphicsPanel';
 import { AssistsPanel, BossOptionsPanel, KeybindPanel, LatencyPanel, StatsEditor } from './InfernoConfig';
 import { GearPanel, InventoryPanel, PresetProfilePanel } from './InfernoLoadout';
 import { InfernoResults } from './InfernoResults';
@@ -34,7 +45,14 @@ type Equipment = Partial<Record<Slot, EquipmentPiece | null>>;
 const DEFAULT_BOSS: BossOptions = { startHpPct: 100, modifierIds: [], freezeGlyph: false, practiceMode: 'full' };
 const DEFAULT_ASSISTS: AssistOptions = { glyphSafeHighlight: false, addTimers: false, jadPrayerIndicator: false, setCountdown: false };
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
-const ADD_IDS: Record<EntityKind, number> = { zuk: 7706, ranger: 7698, mager: 7699, jad: 7700, healer: 7708 };
+const ADD_IDS: Record<EntityKind, number> = {
+  zuk: 7706, ranger: 7698, mager: 7699, jad: 7700, healer: 7708, jadHealer: 7701,
+};
+
+/** Ticks the accumulator may catch up in a single frame after a stall. */
+const MAX_CATCHUP_TICKS = 4;
+const EMPTY_EVENTS: SimEvent[] = [];
+const GRAPHICS_KEY = graphicsKey('inferno');
 
 function download(filename: string, text: string): void {
   const a = document.createElement('a');
@@ -51,7 +69,7 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
   );
   const addMonsters = useMemo(() => {
     const out: Partial<Record<EntityKind, Monster>> = {};
-    for (const kind of ['ranger', 'mager', 'jad', 'healer'] as const) {
+    for (const kind of ['ranger', 'mager', 'jad', 'healer', 'jadHealer'] as const) {
       const m = monsters.find((x) => x.id === ADD_IDS[kind]);
       if (m) out[kind] = m;
     }
@@ -70,10 +88,15 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
   const [profiles, setProfiles] = useState(loadProfiles);
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [graphics, setGraphics] = useState(() => loadGraphics(GRAPHICS_KEY));
+  const [autoQualityNotice, setAutoQualityNotice] = useState<string | null>(null);
 
   // ---------------- sim state ----------------
   const simRef = useRef<TzKalZukSim | null>(null);
   const accRef = useRef(0);
+  /** Bumped whenever the sim instance is replaced, so the renderer knows
+   *  to drop its interpolation history instead of tweening across a cut. */
+  const runIdRef = useRef(0);
   const speedRef = useRef(1);
   const [speed, setSpeed] = useState(1);
   const [running, setRunning] = useState(false);
@@ -136,6 +159,7 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
     if (!cfg) return;
     simRef.current = new TzKalZukSim(cfg);
     accRef.current = 0;
+    runIdRef.current++;
     setResults(null);
     setReplayFile(null);
     setVersion((v) => v + 1);
@@ -149,17 +173,27 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
     setScrubTick(sim.tick);
   }, []);
 
-  useEffect(() => {
-    if (!running) return;
-    let raf = 0;
-    let last = performance.now();
-    const step = (now: number) => {
+  /**
+   * The simulation half of the render contract. `step` is the fixed-
+   * timestep accumulator: it converts scaled wall time into whole engine
+   * ticks, so frame rate and speed multiplier can never change what the
+   * engine computes. `alpha` is how far into the current tick we are —
+   * all the renderer needs to interpolate.
+   */
+  const host = useMemo<SimHost<SimSnapshot>>(() => ({
+    getSnapshot: () => simRef.current?.getSnapshot() ?? null,
+    getEvents: () => (simRef.current?.events ?? EMPTY_EVENTS) as readonly SimEvent[],
+    alpha: () => Math.min(1, accRef.current / TICK_MS),
+    runId: () => runIdRef.current,
+    step: (dtMs: number) => {
       const sim = simRef.current;
-      if (!sim || sim.finished) { setRunning(false); return; }
-      let dt = now - last;
-      last = now;
-      if (dt > 1000) dt = 1000;
-      accRef.current += dt * speedRef.current;
+      if (!sim || sim.finished) return;
+      accRef.current += dtMs * speedRef.current;
+      // Guard a long stall (alt-tab, GC pause) from fast-forwarding the
+      // fight: catch up at most a handful of ticks per frame.
+      if (accRef.current > TICK_MS * MAX_CATCHUP_TICKS) {
+        accRef.current = TICK_MS * MAX_CATCHUP_TICKS;
+      }
       let advanced = false;
       while (accRef.current >= TICK_MS && !sim.finished) {
         accRef.current -= TICK_MS;
@@ -167,22 +201,51 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
         advanced = true;
       }
       if (advanced) setVersion((v) => v + 1);
-      if (sim.finished) { finishRun(sim); return; }
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    const onVis = () => { if (document.hidden) setRunning(false); };
-    document.addEventListener('visibilitychange', onVis);
-    return () => { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); };
-  }, [running, finishRun]);
+      if (sim.finished) finishRun(sim);
+    },
+  }), [finishRun]);
 
   function tickStep(): void {
     const sim = simRef.current;
     if (!sim || sim.finished || running) return;
+    accRef.current = 0;
     sim.advance();
     setVersion((v) => v + 1);
     if (sim.finished) finishRun(sim);
   }
+
+  const onAutoQuality = useCallback((q: QualityTier) => {
+    setGraphics((g) => {
+      const next = { ...g, quality: q };
+      saveGraphics(GRAPHICS_KEY, next);
+      return next;
+    });
+    setAutoQualityNotice(`Frames were running long — quality dropped to ${q}.`);
+  }, []);
+
+  const updateGraphics = useCallback((g: typeof graphics) => {
+    setGraphics(g);
+    saveGraphics(GRAPHICS_KEY, g);
+    setAutoQualityNotice(null);
+  }, []);
+
+  // Built once by the stage; assists are pushed in below.
+  const rendererRef = useRef<InfernoRenderer | null>(null);
+  const graphicsRef = useRef(graphics);
+  graphicsRef.current = graphics;
+  const assistsRef = useRef(assists);
+  assistsRef.current = assists;
+  const createRenderer = useCallback((
+    canvas: HTMLCanvasElement, h: SimHost<SimSnapshot>, onAuto: (q: QualityTier) => void,
+  ) => {
+    const r = new InfernoRenderer(canvas, h, graphicsRef.current, assistsRef.current, {
+      onQualityChange: (q, automatic) => { if (automatic) onAuto(q); },
+    });
+    rendererRef.current = r;
+    return r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => { rendererRef.current?.setAssists(assists); }, [assists]);
 
   // ---------------- inputs ----------------
   const queue = useCallback((cmd: InputCommand) => {
@@ -255,10 +318,14 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
   }, [keys, handleAction]);
 
   // ---------------- replay ----------------
+  /** Re-simulate to tick `t` and draw exactly that state. The renderer
+   *  snaps rather than tweens across the cut (the run id changed). */
   function scrubTo(t: number): void {
     if (!replayFile || !zuk) return;
     setScrubTick(t);
     simRef.current = rehydrate(replayFile, zuk, addMonsters, t);
+    accRef.current = 0;
+    runIdRef.current++;
     setVersion((v) => v + 1);
   }
   function importReplayJson(json: string): void {
@@ -267,6 +334,8 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
       const file = parseReplay(json);
       const sim = rehydrate(file, zuk, addMonsters);
       simRef.current = sim;
+      accRef.current = 0;
+      runIdRef.current++;
       setReplayFile(file);
       setResults(summarize(sim));
       setScrubTick(sim.tick);
@@ -299,10 +368,30 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
     setNotice(`Loaded profile: ${name}`);
   }
 
+  /**
+   * A click on the arena targets whichever add covers that tile, and
+   * otherwise walks there — the same "click the monster or click the
+   * ground" resolution the real client does. It lives here rather than in
+   * the renderer because it is a game decision, not a drawing one.
+   */
+  const handleArenaClick = useCallback((x: number, y: number) => {
+    const snap = simRef.current?.getSnapshot();
+    if (snap) {
+      for (const e of snap.entities) {
+        if (!e.alive || e.hp <= 0) continue;
+        if (x >= e.pos.x && x < e.pos.x + e.size && y >= e.pos.y && y < e.pos.y + e.size) {
+          queue({ kind: 'target', entityId: e.id });
+          return;
+        }
+      }
+    }
+    queue({ kind: 'move', to: { x, y }, run: true });
+  }, [queue]);
+
   // ---------------- render ----------------
   const sim = simRef.current;
   const snapshot = sim?.getSnapshot() ?? null;
-  const getSnapshot = useCallback(() => simRef.current!.getSnapshot(), []);
+  const visualAids = visualAidsInUse(graphics);
 
   if (!zuk) {
     return (
@@ -374,23 +463,23 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
           </div>
         )}
 
-        <div className="flex justify-center">
-          {sim ? (
-            <ZukArenaCanvas
-              version={version}
-              getSnapshot={getSnapshot}
-              assists={assists}
-              onTileClick={(x, y) => queue({ kind: 'move', to: { x, y }, run: true })}
-              onEntityClick={(id) => queue({ kind: 'target', entityId: id })}
-            />
-          ) : (
-            <div className="panel w-full p-10 text-center text-sm text-text-dim">
-              Configure your loadout and press <span className="text-accent font-semibold">Start fight</span>.
-              Shuffle with {keys.moveW.toUpperCase()}/{keys.moveE.toUpperCase()} to stay behind the glyph; switch overheads with
-              {' '}{keys.prayMagic}/{keys.prayRanged} for the magers and Jad; click an add to target it.
-            </div>
-          )}
-        </div>
+        <ArenaStage
+          host={host}
+          graphics={graphics}
+          pingMs={latency.pingMs}
+          running={running}
+          version={version}
+          create={createRenderer}
+          onTileClick={handleArenaClick}
+          onAutoQuality={onAutoQuality}
+        />
+        {!sim && (
+          <div className="panel w-full p-4 text-center text-sm text-text-dim">
+            Configure your loadout and press <span className="text-accent font-semibold">Start fight</span>.
+            Shuffle with {keys.moveW.toUpperCase()}/{keys.moveE.toUpperCase()} to stay behind the glyph; switch overheads with
+            {' '}{keys.prayMagic}/{keys.prayRanged} for the magers and Jad; click an add to target it.
+          </div>
+        )}
 
         {replayFile && (
           <div className="panel p-3 flex items-center gap-3 text-xs flex-wrap">
@@ -409,13 +498,19 @@ export function InfernoTab({ equipment, monsters }: { equipment: EquipmentPiece[
         )}
 
         {notice && <div className="text-xs text-text-dim">{notice}</div>}
-        {results && <InfernoResults results={results} />}
+        {results && <InfernoResults results={results} visualAids={visualAids} />}
       </main>
 
       <aside className="flex flex-col gap-4 min-w-0">
         <LatencyPanel latency={latency} onChange={setLatency} />
         <BossOptionsPanel boss={boss} onChange={setBoss} />
         <AssistsPanel assists={assists} onChange={setAssists} />
+        <GraphicsPanel
+          graphics={graphics}
+          onChange={updateGraphics}
+          autoNotice={autoQualityNotice}
+          followLabel="Pans toward you when zoomed in — never far enough to push the glyph or Zuk off screen."
+        />
         <KeybindPanel keys={keys} onChange={setKeys} />
       </aside>
 

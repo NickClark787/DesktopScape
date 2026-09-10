@@ -8,7 +8,12 @@ import { CONSUMABLE_INDEX } from '@sim/solHeredit/constants';
 
 const pct = (n: number, d: number) => (d > 0 ? `${Math.round((n / d) * 100)}%` : '—');
 
-export function ColosseumResults({ results }: { results: ResultsSummary }) {
+export function ColosseumResults({ results, visualAids = [] }: {
+  results: ResultsSummary;
+  /** Render-side readability aids that were on. Not engine assists, but
+   *  still listed so a "clean" attempt is honestly clean. */
+  visualAids?: string[];
+}) {
   const r = results;
   const outcomeText = r.outcome === 'kill' ? 'Sol Heredit defeated!'
     : r.outcome === 'death' ? 'You died'
@@ -19,11 +24,18 @@ export function ColosseumResults({ results }: { results: ResultsSummary }) {
     <div className="panel">
       <div className="panel-heading flex items-center justify-between">
         <span>Results</span>
-        {r.assistsUsed && (
-          <span className="panel-heading-meta text-accent" title="One or more assists were enabled during this run">
-            assists on
-          </span>
-        )}
+        <span className="flex items-center gap-2">
+          {r.assistsUsed && (
+            <span className="panel-heading-meta text-accent" title="One or more assists were enabled during this run">
+              assists on
+            </span>
+          )}
+          {visualAids.length > 0 && (
+            <span className="panel-heading-meta" title={`Visual aids on: ${visualAids.join(', ')}`}>
+              {visualAids.length} visual aid{visualAids.length > 1 ? 's' : ''}
+            </span>
+          )}
+        </span>
       </div>
       <div className="p-4 flex flex-col gap-3 text-sm">
         <div className="flex items-baseline justify-between">

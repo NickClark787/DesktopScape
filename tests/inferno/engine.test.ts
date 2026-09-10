@@ -8,8 +8,8 @@ import { TzKalZukSim } from '@sim/tzkalZuk/engine';
 import { exportReplay, rehydrate } from '@sim/tzkalZuk/replay';
 import { summarize } from '@sim/tzkalZuk/results';
 import {
-  ENRAGE_HP, GLYPH_ABSORB_PER_HIT, JAD_SPAWN_HP,
-  SET_INTERVAL_TICKS, ZUK_SPEED_ENRAGED,
+  ENRAGE_HP, JAD_HEALER_COUNT, JAD_SPAWN_HP, SET_INTERVAL_TICKS,
+  SET_PAUSE_BONUS_TICKS, ZUK_MAX_HIT, ZUK_SPEED_ENRAGED,
 } from '@sim/tzkalZuk/constants';
 import type { SimEvent, TimedInput } from '@sim/tzkalZuk/types';
 import { baseConfig, addMonsters, zukMonster } from './fixtures';
@@ -29,39 +29,87 @@ function noWeapon(config: ReturnType<typeof baseConfig>) {
   config.player.loadout = { ...config.player.loadout, equipment: {} };
   return config;
 }
+/**
+ * Pull Jad's aggression onto the player. Every spawn opens on the shield
+ * (wiki `TzKal-Zuk`), so a prayer-switch drill has to tag it first.
+ */
+function tagJad(sim: TzKalZukSim): void {
+  sim.advance();
+  const jad = sim.entities.find((e) => e.kind === 'jad');
+  if (jad) { jad.tagged = true; jad.aggro = 'player'; }
+}
 
 // ---------------------------------------------------------------- glyph + Zuk
 
 describe('Zuk shot vs the glyph', () => {
   it('an unprotected player is hit for typeless damage (prayer does not help)', () => {
-    const sim = new TzKalZukSim(baseConfig({ boss: { practiceMode: 'zukOnly' } }));
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'zukOnly' } })));
     sim.player.pos = { x: 24, y: 2 }; // far from the glyph's start columns
     sim.player.overhead = 'ranged'; // does NOT block Zuk
-    advanceUntil(sim, () => sim.events.some((e) => e.type === 'zukAttack'));
-    const hit = sim.events.find((e): e is Extract<SimEvent, { type: 'zukAttack' }> => e.type === 'zukAttack');
-    expect(hit?.blocked).toBe(false);
+    // Zuk rolls accuracy (Mod Ash: averaged ranged/magic roll vs the
+    // player's averaged ranged/magic defence) and is near-certain to hit an
+    // unarmoured player, so look across a handful of shots.
+    advanceUntil(sim, () => sim.events.filter((e) => e.type === 'zukAttack').length >= 3, 200);
+    const shots = sim.events.filter((e): e is Extract<SimEvent, { type: 'zukAttack' }> => e.type === 'zukAttack');
+    expect(shots.every((s) => !s.blocked)).toBe(true);
+    expect(shots.some((s) => s.hit)).toBe(true);
+    expect(shots.every((s) => s.damage <= ZUK_MAX_HIT)).toBe(true);
     expect(sim.events.some((e) => e.type === 'playerDamaged' && e.source === 'TzKal-Zuk')).toBe(true);
   });
 
-  it('a player behind the (frozen) glyph is protected, chipping the shield', () => {
-    const sim = new TzKalZukSim(baseConfig({ boss: { practiceMode: 'zukOnly', freezeGlyph: true } }));
+  it('the shield sustains Zuk’s attacks indefinitely — his shots never chip it', () => {
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'zukOnly', freezeGlyph: true } })));
     sim.player.pos = { x: 2, y: 4 }; // glyph starts covering x0..4 at the glyph row
     const startGlyph = sim.glyphHp;
-    advanceUntil(sim, () => sim.events.some((e) => e.type === 'zukAttack'));
-    const hit = sim.events.find((e): e is Extract<SimEvent, { type: 'zukAttack' }> => e.type === 'zukAttack');
-    expect(hit?.blocked).toBe(true);
-    expect(sim.glyphHp).toBe(startGlyph - GLYPH_ABSORB_PER_HIT);
+    advanceUntil(sim, () => sim.events.filter((e) => e.type === 'zukAttack').length >= 5, 300);
+    const shots = sim.events.filter((e): e is Extract<SimEvent, { type: 'zukAttack' }> => e.type === 'zukAttack');
+    expect(shots.length).toBeGreaterThanOrEqual(5);
+    expect(shots.every((s) => s.blocked)).toBe(true);
+    expect(sim.glyphHp).toBe(startGlyph);
+    expect(sim.glyphDamageTaken).toBe(0);
   });
 
-  it('the shield is destroyed after it absorbs enough, exposing the player', () => {
-    const sim = new TzKalZukSim(baseConfig({ boss: { practiceMode: 'zukOnly', freezeGlyph: true, modifierIds: ['fragile_glyph'] } }));
+  it('the spawns are what destroy the shield, exposing the player', () => {
+    // 'sets' spawns rangers/magers; with no weapon the player never tags
+    // them, so they stay on the shield until it collapses.
+    const sim = new TzKalZukSim(noWeapon(baseConfig({
+      boss: { practiceMode: 'sets', freezeGlyph: true, modifierIds: ['fragile_glyph'] },
+    })));
     sim.player.pos = { x: 2, y: 4 };
     advanceUntil(sim, () => sim.glyphDestroyed, 5000);
     expect(sim.glyphDestroyed).toBe(true);
     expect(sim.events.some((e) => e.type === 'glyphDestroyed')).toBe(true);
+    const chips = sim.events.filter((e): e is Extract<SimEvent, { type: 'glyphDamaged' }> => e.type === 'glyphDamaged');
+    expect(chips.length).toBeGreaterThan(0);
+    expect(chips.every((c) => c.kind === 'ranger' || c.kind === 'mager')).toBe(true);
+    expect(sim.glyphDamageTaken).toBeGreaterThanOrEqual(sim.glyphMaxHp);
     // After destruction the same position no longer protects.
-    advanceUntil(sim, () => sim.events.filter((e) => e.type === 'zukAttack' && !e.blocked).length > 0, 5000);
+    advanceUntil(sim, () => sim.events.some((e) => e.type === 'zukAttack' && !e.blocked), 5000);
     expect(sim.events.some((e) => e.type === 'zukAttack' && !e.blocked)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------- aggro
+
+describe('spawn aggression', () => {
+  it('a set attacks the shield until the player tags it, then switches to the player', () => {
+    const sim = new TzKalZukSim(baseConfig({ boss: { practiceMode: 'sets', freezeGlyph: true } }));
+    sim.player.pos = { x: 2, y: 4 };
+    runTicks(sim, 2);
+    const ranger = sim.entities.find((e) => e.kind === 'ranger')!;
+    expect(ranger.aggro).toBe('shield');
+
+    // Untouched, its attacks land on the shield, not on the player.
+    advanceUntil(sim, () => sim.events.some((e) => e.type === 'glyphDamaged' && e.entityId === ranger.id), 60);
+    expect(sim.events.some((e) => e.type === 'glyphDamaged' && e.entityId === ranger.id)).toBe(true);
+    expect(sim.events.some((e) => e.type === 'addAttack' && e.entityId === ranger.id)).toBe(false);
+
+    // Tag it: aggression moves to the player.
+    sim.queueInput(input({ kind: 'target', entityId: ranger.id }, sim.tick));
+    advanceUntil(sim, () => sim.events.some((e) => e.type === 'aggroTaken' && e.entityId === ranger.id), 60);
+    expect(sim.entities.find((e) => e.id === ranger.id)!.aggro).toBe('player');
+    advanceUntil(sim, () => sim.events.some((e) => e.type === 'addAttack' && e.entityId === ranger.id), 60);
+    expect(sim.events.some((e) => e.type === 'addAttack' && e.entityId === ranger.id)).toBe(true);
   });
 });
 
@@ -75,21 +123,26 @@ describe('add-set spawns', () => {
     expect(spawns.map((s) => s.kind).sort()).toEqual(['mager', 'ranger']);
   });
 
-  it('the set countdown pauses across the 600→480 HP band', () => {
+  it('the set countdown pauses across the 600→480 HP band and gains a one-time 1:45', () => {
     const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'sets', freezeGlyph: true } })));
     runTicks(sim, 2); // first set → firstSetDone, countdown armed and ticking
     // At full HP the countdown runs down toward the next set.
-    expect(sim.getSnapshot().setCountdown).toBeLessThanOrEqual(SET_INTERVAL_TICKS);
-    expect(sim.getSnapshot().setCountdown).toBeGreaterThan(SET_INTERVAL_TICKS - 5);
+    const running = sim.getSnapshot().setCountdown;
+    expect(running).toBeLessThanOrEqual(SET_INTERVAL_TICKS);
+    expect(running).toBeGreaterThan(SET_INTERVAL_TICKS - 5);
 
     sim.setZukHp(550); // inside the pause band (480..600]
+    runTicks(sim, 1); // the tick that applies the +1:45 and then pauses
     const paused = sim.getSnapshot().setCountdown;
+    expect(paused).toBe(running + SET_PAUSE_BONUS_TICKS);
+
     runTicks(sim, 5);
     expect(sim.getSnapshot().setCountdown).toBe(paused); // frozen
 
     sim.setZukHp(470); // below resume threshold
     runTicks(sim, 4);
     expect(sim.getSnapshot().setCountdown).toBeLessThan(paused); // ticking again
+    expect(sim.getSnapshot().setCountdown).toBe(paused - 4);
   });
 
   it('zukOnly practice never spawns adds', () => {
@@ -114,6 +167,7 @@ describe('JalTok-Jad', () => {
   it('the matching overhead blocks Jad; the wrong one takes the hit', () => {
     const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'jad', freezeGlyph: true } })));
     sim.player.pos = { x: 2, y: 4 }; // safe from Zuk so only Jad matters
+    tagJad(sim); // otherwise it would be chewing on the shield, not on us
     // Correct-pray attempt: read the declared style, match it before it lands.
     advanceUntil(sim, () => sim.events.some((e) => e.type === 'addAttackDeclared' && e.kind === 'jad'));
     const decl = sim.events.find((e): e is Extract<SimEvent, { type: 'addAttackDeclared' }> =>
@@ -128,6 +182,7 @@ describe('JalTok-Jad', () => {
   it('wrong overhead on Jad deals damage with a corrective hint', () => {
     const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'jad', freezeGlyph: true } })));
     sim.player.pos = { x: 2, y: 4 };
+    tagJad(sim);
     advanceUntil(sim, () => sim.events.some((e) => e.type === 'addAttackDeclared' && e.kind === 'jad'));
     const decl = sim.events.find((e): e is Extract<SimEvent, { type: 'addAttackDeclared' }> =>
       e.type === 'addAttackDeclared' && e.kind === 'jad')!;
@@ -138,6 +193,50 @@ describe('JalTok-Jad', () => {
     expect(hit?.blocked).toBe(false);
     const dmg = sim.events.find((e) => e.type === 'playerDamaged' && e.source === 'JalTok-Jad');
     expect(dmg && dmg.type === 'playerDamaged' && dmg.correctAction).toContain('Protect from');
+  });
+
+  it('spawns three Yt-HurKot healers at half health, which heal Jad until tagged', () => {
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'jad', freezeGlyph: true } })));
+    runTicks(sim, 1);
+    const jad = sim.entities.find((e) => e.kind === 'jad')!;
+    expect(sim.entities.filter((e) => e.kind === 'jadHealer')).toHaveLength(0);
+
+    jad.hp = Math.floor(jad.maxHp / 2) - 20; // drop it below half
+    runTicks(sim, 1);
+    expect(sim.entities.filter((e) => e.kind === 'jadHealer')).toHaveLength(JAD_HEALER_COUNT);
+    expect(sim.events.filter((e) => e.type === 'addSpawned' && e.kind === 'jadHealer')).toHaveLength(JAD_HEALER_COUNT);
+
+    const before = jad.hp;
+    runTicks(sim, 10);
+    expect(sim.events.some((e) => e.type === 'jadHealed')).toBe(true);
+    expect(jad.hp).toBeGreaterThan(before);
+  });
+});
+
+// ---------------------------------------------------------------- Jal-Zek
+
+describe('Jal-Zek resurrection', () => {
+  it('revives a fallen monster (not itself) at half health, once each', () => {
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ seed: 17, boss: { practiceMode: 'sets', freezeGlyph: true } })));
+    sim.player.pos = { x: 2, y: 4 };
+    runTicks(sim, 2);
+    const ranger = sim.entities.find((e) => e.kind === 'ranger')!;
+    const mager = sim.entities.find((e) => e.kind === 'mager')!;
+
+    // Down the ranger, leave the Jal-Zek up so it can bring it back. The
+    // Jal-Zek has a 1/10 chance per attack to revive instead of attacking.
+    ranger.alive = false;
+    ranger.hp = 0;
+    advanceUntil(sim, () => sim.events.some((e) => e.type === 'monsterRevived'), 1500);
+    const rev = sim.events.find((e): e is Extract<SimEvent, { type: 'monsterRevived' }> => e.type === 'monsterRevived');
+    expect(rev).toBeDefined();
+    expect(rev!.entityId).toBe(ranger.id);
+    expect(rev!.byId).toBe(mager.id);
+    expect(ranger.alive).toBe(true);
+    expect(ranger.hp).toBe(Math.ceil(ranger.maxHp / 2));
+    expect(ranger.revived).toBe(true);
+    // Each monster may only be revived once.
+    expect(sim.events.filter((e) => e.type === 'monsterRevived' && e.entityId === ranger.id)).toHaveLength(1);
   });
 });
 
@@ -166,12 +265,50 @@ describe('enrage and healers', () => {
     }
   });
 
-  it('healers heal Zuk while alive', () => {
+  it('healers heal Zuk while untagged, and do not splash the player yet', () => {
     const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'healers', freezeGlyph: true } })));
+    sim.player.pos = { x: 2, y: 4 }; // behind the glyph, so only healers can hurt us
     const before = sim.getSnapshot().zukHp;
-    runTicks(sim, 10);
+    runTicks(sim, 12);
     expect(sim.events.some((e) => e.type === 'zukHealed')).toBe(true);
     expect(sim.getSnapshot().zukHp).toBeGreaterThan(before); // no weapon → only healing moves HP
+    expect(sim.events.some((e) => e.type === 'playerDamaged' && e.source === 'Jal-MejJak')).toBe(false);
+  });
+
+  it('a tagged healer stops healing and rains lava balls instead', () => {
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'healers', freezeGlyph: true } })));
+    sim.player.pos = { x: 2, y: 4 };
+    runTicks(sim, 1);
+    const healers = sim.entities.filter((e) => e.kind === 'healer');
+    expect(healers).toHaveLength(4);
+    for (const h of healers) h.tagged = true;
+
+    const zukBefore = sim.getSnapshot().zukHp;
+    const healEvents = sim.events.filter((e) => e.type === 'zukHealed').length;
+    runTicks(sim, 12);
+    expect(sim.getSnapshot().zukHp).toBe(zukBefore); // healing has stopped
+    expect(sim.events.filter((e) => e.type === 'zukHealed')).toHaveLength(healEvents);
+    const chip = sim.events.find((e) => e.type === 'playerDamaged' && e.source === 'Jal-MejJak');
+    expect(chip).toBeDefined();
+    expect(chip && chip.type === 'playerDamaged' && chip.amount).toBeLessThanOrEqual(10);
+  });
+
+  it('each heal tick is 15-24, matching the wiki', () => {
+    const sim = new TzKalZukSim(noWeapon(baseConfig({ boss: { practiceMode: 'healers', freezeGlyph: true } })));
+    sim.player.pos = { x: 2, y: 4 };
+    // One healer only, so each `zukHealed` amount is a single roll.
+    runTicks(sim, 1);
+    const healers = sim.entities.filter((e) => e.kind === 'healer');
+    for (const h of healers.slice(1)) h.alive = false;
+    runTicks(sim, 60);
+    const amounts = sim.events
+      .filter((e): e is Extract<SimEvent, { type: 'zukHealed' }> => e.type === 'zukHealed')
+      .map((e) => e.amount);
+    expect(amounts.length).toBeGreaterThan(3);
+    for (const a of amounts) {
+      expect(a).toBeGreaterThanOrEqual(15);
+      expect(a).toBeLessThanOrEqual(24);
+    }
   });
 });
 

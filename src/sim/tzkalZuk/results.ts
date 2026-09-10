@@ -9,7 +9,7 @@ import type { EntityKind, MistakeEntry, ResultsSummary } from './types';
 export function summarize(sim: TzKalZukSim): ResultsSummary {
   const damageBySource: Record<string, number> = {};
   const suppliesUsed: Record<string, number> = {};
-  const addsKilled: Record<EntityKind, number> = { zuk: 0, ranger: 0, mager: 0, jad: 0, healer: 0 };
+  const addsKilled: Record<EntityKind, number> = { zuk: 0, ranger: 0, mager: 0, jad: 0, healer: 0, jadHealer: 0 };
   const mistakes: MistakeEntry[] = [];
   let damageDealt = 0;
   let zukHealed = 0;
@@ -34,11 +34,20 @@ export function summarize(sim: TzKalZukSim): ResultsSummary {
         zukHealed += e.amount;
         break;
       case 'addAttack':
-        // Jal-Zek magers and Jad are the prayer-switch threats.
+        // Only attacks aimed at the player are prayer-switch opportunities;
+        // shield attacks arrive as `glyphDamaged` and cannot be prayed off.
         if (e.kind === 'jad' || e.kind === 'mager' || e.kind === 'ranger') {
           switchTotal++;
           if (e.blocked) switchCorrect++;
         }
+        break;
+      case 'glyphDestroyed':
+        mistakes.push({
+          tick: e.tick,
+          what: 'The Ancestral Glyph collapsed',
+          correctAction: 'tag every spawn as it appears — they chew through the shield’s 600 HP',
+          damage: 0,
+        });
         break;
       case 'consumed':
         suppliesUsed[e.itemId] = (suppliesUsed[e.itemId] ?? 0) + 1;
@@ -61,6 +70,7 @@ export function summarize(sim: TzKalZukSim): ResultsSummary {
     zukHpLeft: sim.getSnapshot().zukHp,
     glyphHpLeft: sim.getSnapshot().glyphHp,
     glyphDestroyed: sim.glyphDestroyed,
+    glyphDamageTaken: sim.glyphDamageTaken,
     playerDps: seconds > 0 ? damageDealt / seconds : 0,
     theoreticalDps: sim.theoreticalDps(),
     damageBySource,

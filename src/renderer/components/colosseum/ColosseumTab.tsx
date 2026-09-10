@@ -3,10 +3,12 @@
  * the sim lifecycle; the engine itself is headless (sim/solHeredit) and
  * this layer only feeds it inputs and reads snapshots.
  *
- * Render/perf rules: the arena is ONE canvas redrawn per sim tick (not per
- * frame); the rAF loop only accumulates time into engine ticks and stops
- * entirely when the run pauses, ends, or the document is hidden. HUD bars
- * are plain DOM with no animation.
+ * Tick/frame split: this component owns the fixed-timestep accumulator
+ * (`host.step`) and the renderer owns the frame loop. The engine is never
+ * advanced once per frame — `step` converts wall time into whole 0.6 s
+ * ticks, and the renderer interpolates between the last two states. When
+ * the run is paused, finished, hidden or scrolled away, the loop is
+ * cancelled outright; a single still frame is drawn on demand instead.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { EquipmentPiece, EquipmentSlot, Monster, PlayerLoadout, PlayerSkills } from '@shared/types';
@@ -16,7 +18,7 @@ import { summarize } from '@sim/solHeredit/results';
 import { CONSUMABLE_INDEX, TICK_MS } from '@sim/solHeredit/constants';
 import type {
   AssistOptions, BossOptions, GrappleSlot, InputCommand, InventorySlot, LatencyConfig,
-  ReplayFile, ResultsSummary, SimConfig, SpecDef,
+  ReplayFile, ResultsSummary, SimConfig, SimEvent, SimSnapshot, SpecDef,
 } from '@sim/solHeredit/types';
 import { applySlotChange } from '../../utils/equipment';
 import { actionForKey, loadKeymap, type KeyAction } from '../../colosseum/keymap';
@@ -25,8 +27,16 @@ import {
   deleteProfile, duplicateProfile, exportProfile, importProfile, loadProfiles,
   renameProfile, resolveProfileGear, saveProfile, type ColosseumProfile,
 } from '../../colosseum/profiles';
-import { ArenaCanvas } from './ArenaCanvas';
-import { AssistsPanel, BossOptionsPanel, KeybindPanel, LatencyPanel, StatsEditor } from './ColosseumConfig';
+import {
+  graphicsKey, loadGraphics, saveGraphics, visualAidsInUse, type QualityTier,
+} from '../../arena/options';
+import type { SimHost } from '../../arena/renderer';
+import { ColosseumRenderer } from '../../colosseum/render/renderer';
+import { ArenaStage } from '../arena/ArenaStage';
+import { GraphicsPanel } from '../arena/GraphicsPanel';
+import {
+  AssistsPanel, BossOptionsPanel, KeybindPanel, LatencyPanel, StatsEditor,
+} from './ColosseumConfig';
 import { GearPanel, InventoryPanel, PresetProfilePanel } from './ColosseumLoadout';
 import { ColosseumResults } from './ColosseumResults';
 import { GearPickerModal } from '../GearPickerModal';
@@ -56,6 +66,11 @@ const DEFAULT_ASSISTS: AssistOptions = {
 };
 
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
+
+/** Ticks the accumulator may catch up in a single frame after a stall. */
+const MAX_CATCHUP_TICKS = 4;
+const EMPTY_EVENTS: SimEvent[] = [];
+const GRAPHICS_KEY = graphicsKey('colosseum');
 
 function download(filename: string, text: string): void {
   const a = document.createElement('a');
@@ -88,10 +103,15 @@ export function ColosseumTab({ equipment, monsters }: {
   const [profiles, setProfiles] = useState(loadProfiles);
   const [activeProfile, setActiveProfile] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
+  const [graphics, setGraphics] = useState(() => loadGraphics(GRAPHICS_KEY));
+  const [autoQualityNotice, setAutoQualityNotice] = useState<string | null>(null);
 
   // ---------------- sim state ----------------
   const simRef = useRef<SolHereditSim | null>(null);
   const accRef = useRef(0);
+  /** Bumped whenever the sim instance is replaced, so the renderer knows
+   *  to drop its interpolation history instead of tweening across a cut. */
+  const runIdRef = useRef(0);
   const speedRef = useRef(1);
   const [speed, setSpeed] = useState(1);
   const [running, setRunning] = useState(false);
@@ -165,6 +185,7 @@ export function ColosseumTab({ equipment, monsters }: {
     if (!cfg) return;
     simRef.current = new SolHereditSim(cfg);
     accRef.current = 0;
+    runIdRef.current++;
     setResults(null);
     setReplayFile(null);
     setVersion((v) => v + 1);
@@ -179,19 +200,27 @@ export function ColosseumTab({ equipment, monsters }: {
     setScrubTick(sim.tick);
   }, []);
 
-  // Tick loop: rAF accumulates wall time into engine ticks at the chosen
-  // speed. Stops when paused, finished, or the document is hidden.
-  useEffect(() => {
-    if (!running) return;
-    let raf = 0;
-    let last = performance.now();
-    const step = (now: number) => {
+  /**
+   * The simulation half of the render contract. `step` is the fixed-
+   * timestep accumulator: it converts scaled wall time into whole engine
+   * ticks, so frame rate and speed multiplier can never change what the
+   * engine computes. `alpha` is how far into the current tick we are,
+   * which is all the renderer needs to interpolate.
+   */
+  const host = useMemo<SimHost<SimSnapshot>>(() => ({
+    getSnapshot: () => simRef.current?.getSnapshot() ?? null,
+    getEvents: () => (simRef.current?.events ?? EMPTY_EVENTS) as readonly SimEvent[],
+    alpha: () => Math.min(1, accRef.current / TICK_MS),
+    runId: () => runIdRef.current,
+    step: (dtMs: number) => {
       const sim = simRef.current;
-      if (!sim || sim.finished) { setRunning(false); return; }
-      let dt = now - last;
-      last = now;
-      if (dt > 1000) dt = 1000; // background-tab hiccup guard
-      accRef.current += dt * speedRef.current;
+      if (!sim || sim.finished) return;
+      accRef.current += dtMs * speedRef.current;
+      // Guard a long stall (alt-tab, GC pause) from fast-forwarding the
+      // fight: catch up at most a handful of ticks per frame.
+      if (accRef.current > TICK_MS * MAX_CATCHUP_TICKS) {
+        accRef.current = TICK_MS * MAX_CATCHUP_TICKS;
+      }
       let advanced = false;
       while (accRef.current >= TICK_MS && !sim.finished) {
         accRef.current -= TICK_MS;
@@ -199,25 +228,51 @@ export function ColosseumTab({ equipment, monsters }: {
         advanced = true;
       }
       if (advanced) setVersion((v) => v + 1);
-      if (sim.finished) { finishRun(sim); return; }
-      raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    const onVis = () => { if (document.hidden) setRunning(false); };
-    document.addEventListener('visibilitychange', onVis);
-    return () => {
-      cancelAnimationFrame(raf);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, [running, finishRun]);
+      if (sim.finished) finishRun(sim);
+    },
+  }), [finishRun]);
 
   function tickStep(): void {
     const sim = simRef.current;
     if (!sim || sim.finished || running) return;
+    accRef.current = 0;
     sim.advance();
     setVersion((v) => v + 1);
     if (sim.finished) finishRun(sim);
   }
+
+  const onAutoQuality = useCallback((q: QualityTier) => {
+    setGraphics((g) => {
+      const next = { ...g, quality: q };
+      saveGraphics(GRAPHICS_KEY, next);
+      return next;
+    });
+    setAutoQualityNotice(`Frames were running long — quality dropped to ${q}.`);
+  }, []);
+
+  const updateGraphics = useCallback((g: typeof graphics) => {
+    setGraphics(g);
+    saveGraphics(GRAPHICS_KEY, g);
+    setAutoQualityNotice(null);
+  }, []);
+
+  // Built once by the stage; assists/weapon are pushed in below.
+  const rendererRef = useRef<ColosseumRenderer | null>(null);
+  const createRenderer = useCallback((
+    canvas: HTMLCanvasElement, h: SimHost<SimSnapshot>, onAuto: (q: QualityTier) => void,
+  ) => {
+    const r = new ColosseumRenderer(canvas, h, graphicsRef.current, assistsRef.current, {
+      onQualityChange: (q, automatic) => { if (automatic) onAuto(q); },
+    });
+    rendererRef.current = r;
+    return r;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const graphicsRef = useRef(graphics);
+  graphicsRef.current = graphics;
+  const assistsRef = useRef(assists);
+  assistsRef.current = assists;
+  useEffect(() => { rendererRef.current?.setAssists(assists); }, [assists]);
 
   // ---------------- inputs ----------------
   const queue = useCallback((cmd: InputCommand) => {
@@ -289,10 +344,15 @@ export function ColosseumTab({ equipment, monsters }: {
   }, [keys, handleAction]);
 
   // ---------------- replay ----------------
+  /** Re-simulate to tick `t` and draw exactly that state. The renderer
+   *  snaps rather than tweens across the cut (the run id changed), so a
+   *  scrubbed frame shows the engine's real position at that tick. */
   function scrubTo(t: number): void {
     if (!replayFile || !sol) return;
     setScrubTick(t);
     simRef.current = rehydrate(replayFile, sol, t);
+    accRef.current = 0;
+    runIdRef.current++;
     setVersion((v) => v + 1);
   }
 
@@ -302,6 +362,8 @@ export function ColosseumTab({ equipment, monsters }: {
       const file = parseReplay(json);
       const sim = rehydrate(file, sol);
       simRef.current = sim;
+      accRef.current = 0;
+      runIdRef.current++;
       setReplayFile(file);
       setResults(summarize(sim));
       setScrubTick(sim.tick);
@@ -342,7 +404,7 @@ export function ColosseumTab({ equipment, monsters }: {
   // ---------------- render ----------------
   const sim = simRef.current;
   const snapshot = sim?.getSnapshot() ?? null;
-  const getSnapshot = useCallback(() => simRef.current!.getSnapshot(), []);
+  const visualAids = visualAidsInUse(graphics);
 
   if (!sol) {
     return (
@@ -447,22 +509,23 @@ export function ColosseumTab({ equipment, monsters }: {
           </div>
         )}
 
-        <div className="flex justify-center">
-          {sim ? (
-            <ArenaCanvas
-              version={version}
-              getSnapshot={getSnapshot}
-              assists={assists}
-              onTileClick={(x, y) => queue({ kind: 'move', to: { x, y }, run: true })}
-            />
-          ) : (
-            <div className="panel w-full p-10 text-center text-sm text-text-dim">
-              Configure your loadout and press <span className="text-accent font-semibold">Start fight</span>.
-              Move with {keys.moveN.toUpperCase()}/{keys.moveW.toUpperCase()}/{keys.moveS.toUpperCase()}/{keys.moveE.toUpperCase()} or
-              click a tile; flick Protect from Melee with {keys.protectMelee.toUpperCase()}.
-            </div>
-          )}
-        </div>
+        <ArenaStage
+          host={host}
+          graphics={graphics}
+          pingMs={latency.pingMs}
+          running={running}
+          version={version}
+          create={createRenderer}
+          onTileClick={(x, y) => queue({ kind: 'move', to: { x, y }, run: true })}
+          onAutoQuality={onAutoQuality}
+        />
+        {!sim && (
+          <div className="panel w-full p-4 text-center text-sm text-text-dim">
+            Configure your loadout and press <span className="text-accent font-semibold">Start fight</span>.
+            Move with {keys.moveN.toUpperCase()}/{keys.moveW.toUpperCase()}/{keys.moveS.toUpperCase()}/{keys.moveE.toUpperCase()} or
+            click a tile; flick Protect from Melee with {keys.protectMelee.toUpperCase()}.
+          </div>
+        )}
 
         {/* Replay controls */}
         {replayFile && (
@@ -483,7 +546,7 @@ export function ColosseumTab({ equipment, monsters }: {
         {!replayFile && sim === null && <ReplayImportBar onImport={importReplayJson} />}
 
         {notice && <div className="text-xs text-text-dim">{notice}</div>}
-        {results && <ColosseumResults results={results} />}
+        {results && <ColosseumResults results={results} visualAids={visualAids} />}
       </main>
 
       {/* Right: fight configuration */}
@@ -491,6 +554,7 @@ export function ColosseumTab({ equipment, monsters }: {
         <LatencyPanel latency={latency} onChange={setLatency} />
         <BossOptionsPanel boss={boss} onChange={setBoss} />
         <AssistsPanel assists={assists} onChange={setAssists} />
+        <GraphicsPanel graphics={graphics} onChange={updateGraphics} autoNotice={autoQualityNotice} />
         <KeybindPanel keys={keys} onChange={setKeys} />
       </aside>
 
@@ -515,13 +579,17 @@ export function ColosseumTab({ equipment, monsters }: {
   );
 }
 
+/** Fill is a transform, not a width: scaling composites, width reflows. */
 function HudBar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   const frac = max > 0 ? Math.max(0, Math.min(1, value / max)) : 0;
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-text-faint">{label} {value}/{max}</span>
       <div className="h-2 rounded bg-bg-raised border border-border overflow-hidden">
-        <div className="h-full" style={{ width: `${frac * 100}%`, background: color }} />
+        <div
+          className="h-full w-full origin-left"
+          style={{ transform: `scaleX(${frac})`, background: color }}
+        />
       </div>
     </div>
   );

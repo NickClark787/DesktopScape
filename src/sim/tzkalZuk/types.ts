@@ -15,14 +15,26 @@ export interface Vec {
 
 // ---------------------------------------------------------------- entities
 
-/** Every damageable actor in the arena. Zuk is always entity 0. */
-export type EntityKind = 'zuk' | 'ranger' | 'mager' | 'jad' | 'healer';
+/**
+ * Every damageable actor in the arena. Zuk is always entity 0.
+ * `healer` = Jal-MejJak (Zuk's healers at 240 HP); `jadHealer` = Yt-HurKot
+ * (JalTok-Jad's healers at half its health).
+ */
+export type EntityKind = 'zuk' | 'ranger' | 'mager' | 'jad' | 'healer' | 'jadHealer';
 
 /** The overhead protection prayers the player can flick. */
 export type Overhead = 'melee' | 'ranged' | 'magic';
 
 /** Attack styles the adds use — drives which overhead blocks them. */
-export type AddStyle = 'ranged' | 'magic';
+export type AddStyle = 'ranged' | 'magic' | 'melee';
+
+/**
+ * What a spawned monster is currently attacking. Wiki `TzKal-Zuk`:
+ * "Periodically, a Jal-Xil (ranger) and Jal-Zek (mager) will appear
+ * throughout the fight and attack the shield; once attacked, they will
+ * instead target the player."
+ */
+export type Aggro = 'shield' | 'player' | 'none';
 
 // ---------------------------------------------------------------- config
 
@@ -142,15 +154,18 @@ export interface TimedInput {
 
 export type SimEvent =
   | { tick: number; type: 'zukAttackDeclared'; landTick: number }
-  | { tick: number; type: 'zukAttack'; blocked: boolean; damage: number }
+  | { tick: number; type: 'zukAttack'; blocked: boolean; hit: boolean; damage: number }
   | { tick: number; type: 'glyphDestroyed' }
+  | { tick: number; type: 'glyphDamaged'; entityId: number; kind: EntityKind; amount: number; glyphHpLeft: number }
   | { tick: number; type: 'addSpawned'; entityId: number; kind: EntityKind }
-  | { tick: number; type: 'addAttackDeclared'; entityId: number; kind: EntityKind; style: AddStyle; landTick: number }
+  | { tick: number; type: 'addAttackDeclared'; entityId: number; kind: EntityKind; style: AddStyle; target: Aggro; landTick: number }
   | { tick: number; type: 'addAttack'; entityId: number; kind: EntityKind; style: AddStyle; blocked: boolean; damage: number }
   | { tick: number; type: 'addKilled'; entityId: number; kind: EntityKind }
-  | { tick: number; type: 'magerRevived'; entityId: number }
+  | { tick: number; type: 'monsterRevived'; entityId: number; kind: EntityKind; byId: number }
+  | { tick: number; type: 'aggroTaken'; entityId: number; kind: EntityKind }
   | { tick: number; type: 'playerHit'; targetId: number; kind: EntityKind; damage: number }
   | { tick: number; type: 'zukHealed'; amount: number }
+  | { tick: number; type: 'jadHealed'; amount: number }
   | { tick: number; type: 'enrage' }
   | { tick: number; type: 'playerDamaged'; source: string; amount: number; correctAction?: string }
   | { tick: number; type: 'prayer'; overhead: Overhead | null }
@@ -185,6 +200,8 @@ export interface ResultsSummary {
   zukHpLeft: number;
   glyphHpLeft: number;
   glyphDestroyed: boolean;
+  /** Shield HP the spawns chewed through — the real shield-loss channel. */
+  glyphDamageTaken: number;
   playerDps: number;
   theoreticalDps: number;
   damageBySource: Record<string, number>;
@@ -208,11 +225,31 @@ export interface EntitySnapshot {
   maxHp: number;
   /** Pending attack style + land tick, or null when not winding up. */
   windup: { style: AddStyle; landTick: number } | null;
+  alive: boolean;
+  /** Tick this entity declares its next attack — assist-gated in the UI. */
+  nextAttackTick: number;
+  /** The entity's fixed attack style; null for Jal-MejJak (AoE). */
+  style: AddStyle | null;
+  /** Shield or player — the shield until the player tags it. */
+  aggro: Aggro;
+  /** True once the player has attacked it: healers stop healing, spawns
+   *  switch aggression from the shield to the player. */
+  tagged: boolean;
+  /** True for a monster a Jal-Zek brought back (half HP, once only). */
+  revived: boolean;
 }
 
-/** Read-only render view. Reused between ticks — do not retain/mutate. */
+/**
+ * Read-only render view. Reused between ticks — do not retain or mutate.
+ *
+ * Everything the visual layer needs about the fight lives here: the
+ * renderer never recomputes glyph geometry, attack timing or entity
+ * state, it only draws what this struct reports.
+ */
 export interface SimSnapshot {
   tick: number;
+
+  // -- player ------------------------------------------------------------
   playerPos: Vec;
   playerHp: number;
   playerMaxHp: number;
@@ -220,19 +257,47 @@ export interface SimSnapshot {
   playerMaxPrayer: number;
   runEnergy: number;
   overhead: Overhead | null;
+  /** Tick the overhead was last switched — exact-tick block feedback. */
+  overheadOnTick: number;
   offensiveOn: boolean;
   targetId: number;
+  playerAlive: boolean;
+  /** Where the player is walking, or null when standing still. */
+  playerMoveTarget: Vec | null;
+  playerRunning: boolean;
+
+  // -- Zuk ---------------------------------------------------------------
   zukHp: number;
   zukMaxHp: number;
+  /** South-west corner of Zuk's 7×7 footprint. */
+  zukAnchor: Vec;
+  zukSize: number;
+  /** Tick Zuk declared his pending shot (-1 when idle) — charge start. */
+  zukWindupStartTick: number;
   zukWindupLandTick: number;
   enraged: boolean;
+
+  // -- glyph -------------------------------------------------------------
   glyphHp: number;
   glyphMaxHp: number;
   glyphDestroyed: boolean;
   /** Columns [x0, x1) the glyph currently covers. */
   glyphSpan: { x0: number; x1: number; row: number } | null;
+  /** +1 patrolling east, -1 west. Visible in game; drives the lead cue. */
+  glyphDir: number;
   playerBehindGlyph: boolean;
-  entities: EntitySnapshot[];
+
+  entities: readonly EntitySnapshot[];
   setCountdown: number;
+
+  // -- network -----------------------------------------------------------
+  /** Inputs in flight: sent by the client, not yet processed. */
+  pendingInputCount: number;
+  /** Destination of an in-flight move — the click marker the client shows
+   *  before the server has registered it. */
+  pendingMoveTarget: Vec | null;
+  /** effectTick − clientTick for the most recent accepted input (-1 none). */
+  lastInputLagTicks: number;
+
   finished: boolean;
 }

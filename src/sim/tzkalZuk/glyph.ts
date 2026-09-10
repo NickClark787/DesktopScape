@@ -38,22 +38,31 @@ export class Glyph {
     return { x0: this.x0, x1: this.x0 + GLYPH_WIDTH, row: GLYPH_ROW };
   }
 
-  /** Advance the patrol one tick. `frozen` holds it still (practice). */
+  /** Which way the patrol is heading: +1 east, -1 west. Visible in game,
+   *  and what tells the player which way to shuffle next. */
+  get direction(): 1 | -1 { return this.dir; }
+
+  /**
+   * Advance the patrol one tick. `frozen` holds it still (practice).
+   *
+   * The glyph bounces off each wall without pausing on it. That matters:
+   * wiki `Inferno` says "TzKal-Zuk's normal attack cycle and the rotational
+   * cycle of the shield align, [so] there are four consistent safespots".
+   * A dwell tick at each end would make the patrol 84 ticks and drift out
+   * of phase with Zuk's 10-tick attack; bouncing keeps it at exactly
+   * 2·(ARENA_W − GLYPH_WIDTH)·GLYPH_STEP_TICKS = 80 ticks = 8 Zuk attacks.
+   */
   step(frozen: boolean): void {
     if (frozen) return;
     this.stepCounter++;
     if (this.stepCounter < GLYPH_STEP_TICKS) return;
     this.stepCounter = 0;
-    const next = this.x0 + this.dir;
-    if (next < this.minX) {
-      this.dir = 1;
-      // A full there-and-back completes on the return to the west wall.
-      this.rotations++;
-    } else if (next > this.maxX) {
-      this.dir = -1;
-    } else {
-      this.x0 = next;
-    }
+    let next = this.x0 + this.dir;
+    if (next > this.maxX) { this.dir = -1; next = this.maxX + this.dir; }
+    else if (next < this.minX) { this.dir = 1; next = this.minX + this.dir; }
+    this.x0 = next;
+    // A full there-and-back completes on the return to the west wall.
+    if (this.x0 === this.minX && this.dir === -1) this.rotations++;
   }
 
   /** Is `pos` protected from a north-origin shot by this glyph position? */

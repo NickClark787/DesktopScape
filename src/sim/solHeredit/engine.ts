@@ -44,7 +44,7 @@ import {
   TRIPLE_VARIANT1_MAX,
   TRIPLE_VARIANT2_MAX,
 } from './constants';
-import { aoeHazardTiles, distToBoss, inArena, tileKey, underBoss } from './hazards';
+import { aoeHazardTiles, distToBoss, facingToward, inArena, tileKey, underBoss } from './hazards';
 import {
   activePrayers,
   consume,
@@ -127,6 +127,11 @@ export class SolHereditSim {
 
   private sand = new Set<string>();
   private beams: { pos: Vec; sandTick: number; fireTick: number; done: boolean }[] = [];
+  /** Facing used to orient the live hazard; frozen while an AoE is pending
+   *  so the drawn wind-up matches the tiles the engine already committed. */
+  private bossFacing: Vec = { x: 0, y: -1 };
+  /** Latency readout for the HUD: how late the last accepted input lands. */
+  private lastInputLagTicks = -1;
 
   private calcCache: CalcResult[] = [];
   private mods: ModifierEffects;
@@ -180,6 +185,9 @@ export class SolHereditSim {
     this.script = new AttackScript(config.boss);
     this.nextAttackTick = 1;
     this.snapshot = this.makeSnapshot();
+    // Publish tick-0 state so a paused/just-started sim renders the real
+    // board instead of the zeroed struct.
+    this.updateSnapshot();
   }
 
   /** The loadout as the shared calc should see it: the style-appropriate
@@ -213,6 +221,7 @@ export class SolHereditSim {
     }
     const arriveMs = input.clientTick * TICK_MS + input.msIntoTick + Math.max(0, pingMs + jitter);
     const effectTick = Math.floor(arriveMs / TICK_MS) + 1;
+    this.lastInputLagTicks = effectTick - input.clientTick;
     this.pending.push({ cmd: input.cmd, effectTick, seq: this.inputSeq++ });
   }
 
@@ -343,6 +352,10 @@ export class SolHereditSim {
       // t+speed+1, inside the resolve+5 guaranteed-max window.
       this.nextAttackTick = t + this.attackSpeed('spear1');
     } else {
+      // Freeze the facing the hazard was built from — the renderer draws
+      // the wind-up from this, so the two can never disagree.
+      const f = facingToward(this.bossAnchor, this.player.pos);
+      this.bossFacing.x = f.x; this.bossFacing.y = f.y;
       cur.hazard = aoeHazardTiles(attack, this.bossAnchor, this.player.pos);
       this.nextAttackTick = t + this.attackSpeed(attack);
     }
@@ -611,10 +624,22 @@ export class SolHereditSim {
       playerHp: 0, playerMaxHp: 0, playerPrayer: 0, playerMaxPrayer: 0,
       runEnergy: 0, specEnergy: 0,
       activePrayers: [],
+      playerMoveTarget: null, playerRunning: false, playerAlive: true,
+      playerWeaponCd: 0, playerAttackDelay: 0,
+      playerProtectMelee: false, playerProtectMeleeOnTick: -99,
+      playerOffensiveOn: false, playerOffensivePrayer: 'piety',
+      playerSpecArmed: false,
       bossAnchor: { x: 0, y: 0 },
       bossHp: 0, bossMaxHp: 0,
-      bossAttack: null, bossAttackResolveTick: -1, grappleSlot: null,
-      hazardTiles: new Set(), sandTiles: this.sand, beams: [],
+      bossAttack: null, bossAttackDeclareTick: -1, bossAttackResolveTick: -1,
+      bossFacing: this.bossFacing,
+      tripleHitTicks: EMPTY_TICKS,
+      grappleSlot: null, grappleWindowStart: -1, grappleWindowEnd: -1,
+      grappleParried: false, grapplePerfect: false,
+      enraged: false, transitionEndTick: -1, nextAttackTick: -1,
+      guaranteedMaxUntilTick: -1,
+      hazardTiles: EMPTY_SET, sandTiles: this.sand, beams: this.beams,
+      pendingInputCount: 0, pendingMoveTarget: null, lastInputLagTicks: -1,
       nextAttackHint: null, activeGearSet: 0, finished: false,
     };
   }
@@ -624,29 +649,78 @@ export class SolHereditSim {
     return this.snapshot;
   }
 
+  /**
+   * Refresh the render-facing view. Called once per tick (and once at
+   * construction). Everything here is a straight copy of committed engine
+   * state — no derivation the renderer could get wrong, and no allocation
+   * beyond `activePrayers`, so the render loop can read it every frame.
+   */
   private updateSnapshot(): void {
     const s = this.snapshot as {
       -readonly [K in keyof SimSnapshot]: SimSnapshot[K];
     };
     const p = this.player;
+    const cur = this.current;
     s.tick = this.tickNum;
     s.playerPos.x = p.pos.x; s.playerPos.y = p.pos.y;
     s.playerHp = p.hp; s.playerMaxHp = p.maxHp;
     s.playerPrayer = p.prayer; s.playerMaxPrayer = p.maxPrayer;
     s.runEnergy = p.runEnergy; s.specEnergy = p.specEnergy;
     s.activePrayers = activePrayers(p);
+    s.playerMoveTarget = p.moveTarget;
+    s.playerRunning = p.running;
+    s.playerAlive = p.alive;
+    s.playerWeaponCd = p.weaponCd;
+    s.playerAttackDelay = p.attackDelay;
+    s.playerProtectMelee = p.protectMelee;
+    s.playerProtectMeleeOnTick = p.protectMeleeOnTick;
+    s.playerOffensiveOn = p.offensiveOn;
+    s.playerOffensivePrayer = p.offensivePrayer;
+    s.playerSpecArmed = p.specArmed;
+
     s.bossAnchor = this.bossAnchor;
     s.bossHp = this.bossHp; s.bossMaxHp = this.bossMaxHp;
-    s.bossAttack = this.current?.attack ?? null;
-    s.bossAttackResolveTick = this.current
-      ? (this.current.attack === 'tripleParry'
-        ? this.current.tripleHitTicks.find((h) => h > this.tickNum) ?? -1
-        : this.current.resolveTick)
+    s.bossAttack = cur?.attack ?? null;
+    s.bossAttackDeclareTick = cur?.declareTick ?? -1;
+    s.bossAttackResolveTick = cur
+      ? (cur.attack === 'tripleParry'
+        ? cur.tripleHitTicks.find((h) => h > this.tickNum) ?? -1
+        : cur.resolveTick)
       : -1;
-    s.grappleSlot = this.current?.grappleSlot ?? null;
-    s.hazardTiles = this.current?.hazard ?? EMPTY_SET;
+    // Idle: he tracks the player. Mid-AoE: the frozen hazard facing stands.
+    if (!cur || !cur.hazard) {
+      const f = facingToward(this.bossAnchor, p.pos);
+      this.bossFacing.x = f.x; this.bossFacing.y = f.y;
+    }
+    s.bossFacing = this.bossFacing;
+    s.tripleHitTicks = cur?.attack === 'tripleParry' ? cur.tripleHitTicks : EMPTY_TICKS;
+    s.grappleSlot = cur?.grappleSlot ?? null;
+    s.grappleWindowStart = cur?.attack === 'grapple' ? cur.declareTick + 1 : -1;
+    s.grappleWindowEnd = cur?.attack === 'grapple' ? cur.resolveTick : -1;
+    s.grappleParried = cur?.grappleParried ?? false;
+    s.grapplePerfect = cur?.grapplePerfect ?? false;
+    s.enraged = this.bossMaxHp > 0 && this.bossHp / this.bossMaxHp < ENRAGE_HP_GATE;
+    s.transitionEndTick = this.tickNum < this.transitionEndTick ? this.transitionEndTick : -1;
+    s.nextAttackTick = this.nextAttackTick;
+    s.guaranteedMaxUntilTick = this.guaranteedMaxUntil;
+
+    s.hazardTiles = cur?.hazard ?? EMPTY_SET;
     s.sandTiles = this.sand;
-    s.beams = this.beams.filter((b) => !b.done);
+    // The live array — `done` beams stay in it so the reference is stable
+    // and the renderer can keep drawing their fade-out.
+    s.beams = this.beams;
+
+    s.pendingInputCount = this.pending.length;
+    let moveTarget: Vec | null = null;
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      if (this.pending[i].cmd.kind === 'move') {
+        moveTarget = (this.pending[i].cmd as { to: Vec }).to;
+        break;
+      }
+    }
+    s.pendingMoveTarget = moveTarget;
+    s.lastInputLagTicks = this.lastInputLagTicks;
+
     s.nextAttackHint = null;
     s.activeGearSet = p.activeGearSet;
     s.finished = this.finished;
@@ -669,3 +743,4 @@ export class SolHereditSim {
 }
 
 const EMPTY_SET: ReadonlySet<string> = new Set();
+const EMPTY_TICKS: ReadonlyArray<number> = [];

@@ -7,6 +7,13 @@ layer that feeds inputs in and draws snapshots out. That means the engine
 can run under vitest, or thousands of times in a loop for Monte-Carlo
 analysis, unchanged.
 
+The visual layer lives in
+[`src/renderer/colosseum/render`](../../renderer/colosseum/render/README.md)
+— canvas architecture, the tick-to-frame interpolation model, quality
+tiers and how to add an effect are documented there. It reads
+`SimSnapshot` and never recomputes fight state; anything it needs is added
+here as a read-only snapshot field.
+
 Mechanics were verified against the OSRS Wiki (`Sol_Heredit`,
 `Fortis_Colosseum/Strategies`) on 2026-07-12; the deviations between the
 wiki and the original feature request (AoE max 44 not ~45, beam spheres up
@@ -102,7 +109,9 @@ read-only in the UI — saving forks them into a localStorage profile
 
 ## Known simplifications (documented in code)
 
-- Sol does not reposition; the arena is an open 16×15 box (no pillars).
+- Sol does not reposition; the arena is an open 16×15 box. The corner
+  pillars the renderer draws sit *outside* that box and block nothing —
+  they are framing, not collision.
 - Movement pathing is greedy 8-directional; sand halts a blocked step.
 - Special attacks use a small single-roll approximation table
   (`SPEC_TABLE` in `ColosseumTab.tsx`).

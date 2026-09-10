@@ -7,12 +7,23 @@ fight. Built to the **same design as the Sol Heredit sim** (`sim/solHeredit`)
 from. It runs under vitest and could drive thousands of headless
 Monte-Carlo runs unchanged.
 
-Mechanics were verified against the OSRS Wiki (`TzKal-Zuk`,
-`Inferno/Strategies`) on 2026-07-12. Values the wiki does **not** publish —
-the Ancestral Glyph's tile width and patrol cadence, and the add-set spawn
-geometry — are modelled from community strategy and flagged in
-`constants.ts`; they are trivially overridable via `BossOptions`/modifiers
-for drills.
+The visual layer lives in
+[`src/renderer/inferno/render`](../../renderer/inferno/render/README.md),
+built on the shared
+[arena render core](../../renderer/arena/README.md) — canvas
+architecture, the tick-to-frame interpolation model, quality tiers and how
+to add an effect are documented there. It reads `SimSnapshot` and never
+recomputes fight state; anything it needs is added here as a read-only
+snapshot field.
+
+Mechanics were re-verified against the OSRS Wiki (`TzKal-Zuk`, `Inferno`,
+`Inferno/Strategies`, `Ancestral glyph`, and each Jal- monster's own page)
+on 2026-08-07; every number in `constants.ts` carries the page it came
+from. Values the wiki does **not** publish — the Ancestral Glyph's tile
+width and patrol cadence, the add-set spawn geometry, and the
+animation→landing windup lengths — are modelled from community strategy and
+marked MODELLED in `constants.ts`; they are trivially overridable via
+`BossOptions`/modifiers for drills.
 
 ## The tick model
 
@@ -35,11 +46,13 @@ for drills.
 
 | Mechanic | Model |
 |---|---|
-| **Ancestral Glyph** | A `GLYPH_WIDTH`-wide bar one row south of Zuk, sliding east↔west (`glyph.ts`). Zuk's shot is blocked only when the player stands in a covered column *south* of the bar — the shuffle. Each blocked shot chips the 600-HP shield; enough chips destroy it and expose the player. |
-| **Zuk** | Attacks every 10 ticks (7 enraged), typeless up to 148, **unpreventable by prayer** — the glyph is the only defence. |
-| **Add sets** | One Jal-Xil (ranged) + one Jal-Zek (magic) per set. First set gates on a full glyph rotation; later sets on a 350-tick timer that **pauses across the 600→480 HP band** (wiki). Blocked by the matching overhead prayer; Jal-Zek revives once. |
-| **JalTok-Jad** | Spawns at 480 HP; each attack randomly telegraphs magic or ranged, and the matching overhead must be active on the landing tick or it hits for up to 113. |
-| **Enrage + healers** | At 240 HP Zuk speeds up and four Jal-MejJak healers spawn, healing Zuk 15–25 every 3 ticks — a kill race. |
+| **Ancestral Glyph** | A `GLYPH_WIDTH`-wide bar one row south of Zuk, sliding east↔west (`glyph.ts`). Zuk's shot is blocked whenever the player stands in a covered column *south* of the bar — the shuffle. Zuk's own shots **never damage it** ("it can sustain TzKal-Zuk's attacks indefinitely"); its 600 HP is spent only against the spawned monsters. The patrol is 80 ticks = exactly 8 Zuk attacks, which is what gives the fight its four consistent safespots. |
+| **Zuk** | Attacks every 10 ticks (7 enraged). A single roll 0–148 — the average of his 128 magic and 169 ranged maxes (Mod Ash) — **unpreventable by prayer and not tick-eatable**; the glyph is the only defence. He still rolls accuracy: averaged ranged/magic attack roll vs the average of the player's ranged and magic defence rolls. |
+| **Spawn aggression** | Everything that spawns opens on the **shield**, not on you, and switches to you the moment you attack it. Ignore them and the shield collapses — that is the real shield-loss channel, and the reason the fight is a tagging exercise. |
+| **Add sets** | One Jal-Xil (ranged) + one Jal-Zek (magic) per set. First set gates on a full glyph rotation; later sets on a 350-tick timer that **pauses across the 600→480 HP band and gains a one-time +175 ticks** at 600 HP. Blocked by the matching overhead prayer once tagged. |
+| **Jal-Zek revive** | 1/10 chance per attack to revive *another* fallen monster (never itself) at half HP near the arena centre; each monster only once, and the Jal-Zek does nothing for 7 ticks afterwards. |
+| **JalTok-Jad** | Spawns at 480 HP on the shield; each attack randomly telegraphs magic or ranged, and the matching overhead must be active on the landing tick or it hits for up to 113. At half health it spawns three Yt-HurKot that heal it until tagged. |
+| **Enrage + healers** | At 240 HP Zuk speeds up and four Jal-MejJak spawn, healing Zuk 15–24 every 3 ticks **until you tag them**; a tagged one stops healing and rains 5–10 lava balls instead. |
 
 ### Input latency
 
@@ -56,6 +69,7 @@ what makes an overhead switch on Jad or a mager arrive a tick late.
 | `types.ts` | config / input / event / snapshot shapes |
 | `rng.ts` | seedable mulberry32 (same generic stream as Sol) |
 | `glyph.ts` | Ancestral Glyph patrol + protection geometry |
+| `npcCombat.ts` | monster → player attack/defence rolls (ported from the wiki calc) |
 | `player.ts` | stats, overhead + offensive prayers, consumables, movement |
 | `engine.ts` | the tick pipeline + entity management |
 | `replay.ts` | export / import / scrub |
@@ -88,11 +102,25 @@ in the UI — saving forks them into a versioned-localStorage profile
 
 ## Known simplifications (documented in code)
 
-- The glyph's exact tile width and cadence, and the shield's per-hit chip,
-  are modelled (the wiki gives none); tune them in `constants.ts`.
+- The glyph's exact tile width and cadence are modelled (the wiki gives
+  none); the cadence is pinned by the published "attack cycle and shield
+  rotation align" constraint. Tune them in `constants.ts`.
 - Adds don't path — they attack on cadence from their spawn tile; the
-  player is always in ranged range of everything.
-- Jal-Zek revives exactly once; the healers' pull-and-trap positioning is
-  abstracted to "kill them before they out-heal your DPS".
+  player is always in range of everything, and monster attack *ranges* are
+  therefore not modelled.
+- The Jal-MejJak lava-ball AoE is a flat 5–10 chip on every tagged healer's
+  cycle rather than a positional 3×3 splash you can step out of.
+- Yt-HurKot heal rate is modelled (the wiki publishes none). Jad's melee is
+  not modelled — the sim never places the player adjacent to it.
 - Special attacks and gear switches beyond the main set aren't modelled
   (the fight is a single ranged setup).
+
+## Deliberately *not* modelled, because the wiki says they don't happen
+
+- **Jal-Nib in wave 69.** Nibblers "always spawn in every wave until wave
+  67"; there are none at Zuk.
+- **The shield halting during a healer or Jad phase.** No source says the
+  patrol stops; the strategies page in fact tells you to keep moving with
+  it through the enrage.
+- **A healer phase at 480 HP.** 480 is the JalTok-Jad trigger; the
+  Jal-MejJak healers are the 240 HP trigger only.

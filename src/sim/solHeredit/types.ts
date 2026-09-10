@@ -214,10 +214,29 @@ export interface ResultsSummary {
 
 // ---------------------------------------------------------------- snapshot
 
-/** Read-only view for the render layer. Reused between ticks — the render
- *  loop must not mutate or retain it. */
+/** A transition light beam as the renderer sees it. `done` beams have
+ *  already fired and are kept only so the array identity stays stable. */
+export interface BeamView {
+  pos: Vec;
+  /** Tick molten sand spawns on the beam tile. */
+  sandTick: number;
+  /** Tick the beam launches its sphere. */
+  fireTick: number;
+  done: boolean;
+}
+
+/**
+ * Read-only view for the render layer. Reused between ticks — the render
+ * loop must not mutate or retain it.
+ *
+ * Everything the visual layer needs about the fight lives here: the
+ * renderer never recomputes hazard shapes, facings or timings, it only
+ * draws what this struct reports. Fields are grouped by what they drive.
+ */
 export interface SimSnapshot {
   tick: number;
+
+  // -- player ------------------------------------------------------------
   playerPos: Vec;
   playerHp: number;
   playerMaxHp: number;
@@ -226,15 +245,62 @@ export interface SimSnapshot {
   runEnergy: number;
   specEnergy: number;
   activePrayers: string[];
+  /** Where the player is walking, or null when standing still. */
+  playerMoveTarget: Vec | null;
+  playerRunning: boolean;
+  playerAlive: boolean;
+  /** Ticks left on the weapon cooldown — drives the swing cadence visual. */
+  playerWeaponCd: number;
+  /** Ticks the next attack is delayed by (eating, switching). */
+  playerAttackDelay: number;
+  playerProtectMelee: boolean;
+  /** Tick Protect from Melee last went OFF→ON (parry-timing feedback). */
+  playerProtectMeleeOnTick: number;
+  playerOffensiveOn: boolean;
+  playerOffensivePrayer: string;
+  playerSpecArmed: boolean;
+
+  // -- boss --------------------------------------------------------------
   bossAnchor: Vec;
   bossHp: number;
   bossMaxHp: number;
   bossAttack: BossAttack | null;
+  /** Tick the current attack was declared (-1 when idle) — windup start. */
+  bossAttackDeclareTick: number;
   bossAttackResolveTick: number;
+  /** Cardinal facing the engine used to orient the current hazard. */
+  bossFacing: Vec;
+  /** Triple Parry: the three hit ticks, in order. Empty otherwise. */
+  tripleHitTicks: ReadonlyArray<number>;
   grappleSlot: GrappleSlot | null;
+  /** First and last tick a grapple parry is accepted (-1 when idle). */
+  grappleWindowStart: number;
+  grappleWindowEnd: number;
+  grappleParried: boolean;
+  grapplePerfect: boolean;
+  /** Boss HP is below the enrage gate. */
+  enraged: boolean;
+  /** Tick the boss resumes after a phase transition (-1 when not pausing). */
+  transitionEndTick: number;
+  /** Tick the next attack is declared — assist-gated in the UI. */
+  nextAttackTick: number;
+  /** End tick of the perfect-parry guaranteed-max window (-1 = none). */
+  guaranteedMaxUntilTick: number;
+
+  // -- terrain -----------------------------------------------------------
   hazardTiles: ReadonlySet<string>;
   sandTiles: ReadonlySet<string>;
-  beams: ReadonlyArray<{ pos: Vec; fireTick: number }>;
+  beams: ReadonlyArray<BeamView>;
+
+  // -- network -----------------------------------------------------------
+  /** Inputs in flight: sent by the client, not yet processed by the sim. */
+  pendingInputCount: number;
+  /** Destination of an in-flight move — the click marker the client shows
+   *  before the server has registered it. */
+  pendingMoveTarget: Vec | null;
+  /** effectTick − clientTick for the most recent accepted input (-1 none). */
+  lastInputLagTicks: number;
+
   nextAttackHint: BossAttack | null;
   activeGearSet: number;
   finished: boolean;
